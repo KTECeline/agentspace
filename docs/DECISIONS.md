@@ -4,7 +4,7 @@ Short records of why each choice was made. Newest at the bottom. Format: context
 
 ## D-001 · Project name `agentspace` (2026-09-23)
 `agentspace` is free on both PyPI and npm (`agent-space` is taken on both).
-**Decision:** keep `agentspace`. Reserve it early with a placeholder `0.0.1` on both registries (see D-006).
+**Decision:** keep `agentspace`. Reserve it early with a placeholder `0.0.1` on both registries (see D-006). *Superseded for the package names by D-019.*
 
 ## D-002 · License: Apache-2.0 (2026-09-23)
 **Decision:** Apache-2.0.
@@ -22,7 +22,7 @@ Short records of why each choice was made. Newest at the bottom. Format: context
 **Why:** many teams running agents in production are still on 3.10/3.11. No 3.11+ syntax (`except*`, `Self`, `tomllib`) in the SDK.
 
 ## D-006 · Reserve the package names with placeholder 0.0.1 releases (2026-09-23)
-**Decision:** `placeholders/` holds a minimal PyPI and npm package, both `agentspace@0.0.1`. The maintainer publishes them by hand with their own credentials (commands in `placeholders/README.md`). The real SDK starts at `0.1.0`.
+**Decision:** `placeholders/` holds a minimal PyPI and npm package, both at `0.0.1` (names per D-019). The maintainer publishes them by hand with their own credentials (commands in `placeholders/README.md`). The real SDK starts at `0.1.0`.
 **Why:** stops name squatting before the repo goes public, without shipping unfinished code.
 
 ## D-007 · Monorepo tooling: pnpm workspaces + uv (2026-09-23)
@@ -31,7 +31,7 @@ Short records of why each choice was made. Newest at the bottom. Format: context
 
 ## D-008 · Python SDK has zero runtime dependencies; pydantic models are an extra (2026-09-23)
 The brief asks for pydantic types generated from the schema. They are generated (`agentspace.models`), but the SDK's hot path builds plain dicts and sends them with the stdlib (`urllib`, `threading`).
-**Decision:** `dependencies = []`. `pip install agentspace[models]` adds pydantic for people who want typed models. The tests validate every event the SDK emits against both the JSON Schema and the pydantic models.
+**Decision:** `dependencies = []`. `pip install 'agentspace-sdk[models]'` adds pydantic for people who want typed models. The tests validate every event the SDK emits against both the JSON Schema and the pydantic models.
 **Why:** a tracing SDK must never cause version conflicts in the host app (pydantic v1 vs v2, httpx pins). Building dicts is also cheaper than building models, which matters for the < 1 ms/event target.
 
 ## D-009 · Spec adds `step.started` / `step.finished` (2026-09-23)
@@ -86,3 +86,8 @@ On Python < 3.11, LangGraph can't propagate callback context into model or tool 
 
 ## D-018 · Docker images: pnpm deploy (collector), Next standalone (web) (2026-09-24)
 **Decision:** both are multi-stage `node:22-slim` images that run as the `node` user. The collector uses `pnpm deploy --prod` plus the tsup bundle. The web image uses Next's `output: "standalone"`. `better-sqlite3`'s install script is skipped (`ignoredBuiltDependencies`) because v13 ships prebuilt binaries, so no Python or compiler is needed. Current sizes are about 400 MB each; slimming them is a Phase 5 task.
+
+## D-019 · Published names: `agentspace-sdk` (PyPI), `@agentspace/sdk` (npm) (2026-09-24)
+PyPI rejected `agentspace` with "too similar to an existing project": it matches `agent-space` once punctuation is removed. npm applies a similar rule, and `agent-space` exists there too. The earlier check (D-001) only looked for exact names.
+**Decision:** keep the AgentSpace brand and the import name `agentspace`. The PyPI distribution is `agentspace-sdk`, the same pattern as `beautifulsoup4` → `bs4`. The npm TypeScript SDK will be scoped as `@agentspace/sdk`, under the npm org `agentspace`, which is where the private workspace packages already live. Placeholders are updated to match.
+**Why:** it's the smallest change: code, docs and the brand stay the same, and a scoped npm name can't clash with similar unscoped names.

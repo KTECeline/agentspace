@@ -10,7 +10,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agentspace"
+name = "agentspace-sdk"
 version = "0.1.0.dev0"
 source = { editable = "." }
 

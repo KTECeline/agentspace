@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agentspace"
+name = "agentspace-sdk"
 version = "0.1.0.dev0"
 source = { editable = "../../packages/sdk-python" }
 
@@ -587,7 +587,7 @@ name = "langgraph-dev-team"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "agentspace" },
+    { name = "agentspace-sdk" },
     { name = "langchain-anthropic" },
     { name = "langchain-core" },
     { name = "langgraph" },
@@ -596,7 +596,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentspace", editable = "../../packages/sdk-python" },
+    { name = "agentspace-sdk", editable = "../../packages/sdk-python" },
     { name = "langchain-anthropic", specifier = ">=1.0" },
     { name = "langchain-core", specifier = ">=1.0" },
     { name = "langgraph", specifier = ">=1.0" },

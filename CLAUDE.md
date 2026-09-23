@@ -15,7 +15,7 @@ Full brief: `docs/BRIEF.md`. Status: `docs/PROGRESS.md`. Why things are the way 
 |---|---|---|
 | `spec/v0.1/event.schema.json` | Event spec: **single source of truth** | JSON Schema 2020-12 |
 | `packages/spec-types` | Generated TS types + hand-written API types (`src/api.ts`) + schema copy | TS source, no build |
-| `packages/sdk-python` | `agentspace` SDK + `adapters/` | Python ≥3.10, uv, hatchling |
+| `packages/sdk-python` | SDK: distribution `agentspace-sdk`, import `agentspace`; `adapters/` | Python ≥3.10, uv, hatchling |
 | `server/` | Collector: ingest, SQLite store, WS fan-out | Node 22, Fastify 5, better-sqlite3, Ajv |
 | `web/` | Office UI | Next.js 16 (App Router), React 19, Tailwind v4 |
 | `examples/langgraph-dev-team` | Example + `--fake` scripted model | uv project, path-dep on the SDK |

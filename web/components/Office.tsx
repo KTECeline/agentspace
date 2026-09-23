@@ -148,7 +148,7 @@ function EmptyOffice({ collectorUrl, workspace }: { collectorUrl: string; worksp
         <p className="text-muted">Agents appear here as soon as your app sends its first event.</p>
       </div>
       <pre className="w-full overflow-x-auto rounded-lg bg-surface-2 p-4 font-mono text-sm">
-        <code>{`pip install agentspace
+        <code>{`pip install agentspace-sdk
 
 import agentspace
 agentspace.init(url="${collectorUrl}"${wsArg})

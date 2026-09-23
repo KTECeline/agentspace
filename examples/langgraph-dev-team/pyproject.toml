@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "AgentSpace example: a LangGraph dev team fixing a seeded bug."
 requires-python = ">=3.10"
 dependencies = [
-  "agentspace",
+  "agentspace-sdk",
   "langgraph>=1.0",
   "langchain-core>=1.0",
   "langchain-anthropic>=1.0",
@@ -15,4 +15,4 @@ dependencies = [
 package = false
 
 [tool.uv.sources]
-agentspace = { path = "../../packages/sdk-python", editable = true }
+agentspace-sdk = { path = "../../packages/sdk-python", editable = true }

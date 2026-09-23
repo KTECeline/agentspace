@@ -12,6 +12,10 @@
 docker compose up -d                 # collector on :4800, office on http://localhost:4801
 ```
 
+```bash
+pip install agentspace-sdk
+```
+
 ```python
 import agentspace
 agentspace.init()                    # LangGraph graphs are picked up automatically
@@ -45,7 +49,7 @@ cd examples/langgraph-dev-team && uv run python main.py --fake --runs 0
 ```
 
 - **[Event spec](spec/README.md)** (JSON Schema, v0.1) is the single source of truth. The Python (pydantic) and TypeScript types are generated from it, and it maps to the [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/semantic-conventions-genai).
-- **[Python SDK](packages/sdk-python)** (`agentspace`) has zero runtime dependencies and supports Python 3.10+.
+- **[Python SDK](packages/sdk-python)** (`pip install agentspace-sdk`, `import agentspace`) has zero runtime dependencies and supports Python 3.10+.
 - **[Collector](server)** validates every event against the schema, de-duplicates retries, stores events in SQLite, and streams them to browsers.
 - **[Web](web)**: Next.js with Tailwind. The 2D view is the debug and low-power view; the 3D office comes in Phase 2.
 

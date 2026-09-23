@@ -1,5 +1,5 @@
 [project]
-name = "agentspace"
+name = "agentspace-sdk"
 version = "0.1.0.dev0"
 description = "Live office for AI agent teams: see every agent think, call tools, hand off, and cost money."
 readme = "README.md"

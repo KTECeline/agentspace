@@ -1,23 +1,42 @@
 # Name reservation (placeholder 0.0.1 releases)
 
-These two tiny packages reserve `agentspace` on PyPI and npm (see `docs/DECISIONS.md` D-006). They contain no code. Publish each one once, by hand, with your own credentials.
+These two tiny packages reserve the SDK names (see `docs/DECISIONS.md` D-006 and D-019). They contain no code. Publish each one once, by hand, with your own credentials.
+
+| Registry | Package | Users write |
+|---|---|---|
+| PyPI | `agentspace-sdk` | `pip install agentspace-sdk`, then `import agentspace` |
+| npm | `@agentspace/sdk` | `npm i @agentspace/sdk` |
+
+We don't use plain `agentspace`: PyPI rejects it as too similar to the existing `agent-space`, and npm applies the same rule.
 
 ## PyPI
 
+Create an account-scoped token at https://pypi.org/manage/account/token/ (2FA required). Then:
+
 ```bash
 cd placeholders/pypi
-uv build                                   # -> dist/agentspace-0.0.1-py3-none-any.whl + .tar.gz
-uv publish --token "$PYPI_TOKEN"           # token from https://pypi.org/manage/account/token/
+read -s "PYPI_TOKEN?Paste PyPI token: " && export PYPI_TOKEN && echo   # zsh; keeps it out of history
+uv build
+uv publish --token "$PYPI_TOKEN"
 ```
 
 ## npm
 
+1. Turn on 2FA for "Authorization and Publishing" at npmjs.com → Account.
+2. Create the free organization `agentspace` at https://www.npmjs.com/org/create. The scope `@agentspace` only exists once the org does.
+3. Publish:
+
 ```bash
 cd placeholders/npm
-npm login                                  # once
-npm publish --access public
+npm login
+npm publish --otp=123456        # the code from your authenticator app
 ```
 
-Check that it worked: `pip index versions agentspace` and `npm view agentspace version` should both show `0.0.1`.
+## Check it worked
 
-After this, add a trusted publisher (PyPI) and a granular automation token (npm) so the release workflow can publish real versions in Phase 5.
+```bash
+pip index versions agentspace-sdk     # 0.0.1
+npm view @agentspace/sdk version      # 0.0.1
+```
+
+Afterwards, swap the account-wide PyPI token for a project-scoped one (or a trusted publisher), so the release workflow can publish real versions in Phase 5.
