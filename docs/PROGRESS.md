@@ -15,7 +15,7 @@
 - [x] 2D web view: team groups, agent cards (status, summary, tokens, cost, activity), filterable/pausable event log, run summary, loading/empty/offline states, light/dark
 - [x] `examples/langgraph-dev-team` (Manager + Triage + Engineer) with `--fake`
 - [x] Docker images + `docker-compose.yml`
-- [ ] Placeholder `0.0.1` of `agentspace-sdk` (PyPI) and `agentspace-sdk` (npm), which the maintainer publishes by hand; see `placeholders/README.md`
+- [x] Name reserved: `agentspace-sdk@0.0.1` published on PyPI and npm (2026-09-24; see `placeholders/README.md`, D-019)
 
 **Test counts:** Python 34 (on 3.10 and 3.12 locally, 3.10/3.13 in CI) · collector 9 · web 6.
 
