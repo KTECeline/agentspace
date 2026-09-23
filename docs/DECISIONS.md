@@ -72,3 +72,10 @@ On Python < 3.11, LangGraph can't propagate callback context into model or tool 
 ## D-015 · WebSocket protocol: snapshot then deltas (2026-09-24)
 **Decision:** `GET /v1/ws?workspace=` sends one `snapshot` (agents, the 50 most recent runs, the last 200 events), then `events`, `agents` and `runs` deltas after each ingest. Clients with more than 8 MB of buffered data are skipped rather than buffered for.
 **Why:** a browser can join mid-run and render at once. Sending the updated projection rows means the web app doesn't have to re-derive state from events.
+
+## D-016 · Phase 1 web: plain Tailwind tokens, no component library yet (2026-09-24)
+**Decision:** the 2D view uses Tailwind v4 with CSS-variable design tokens (light and dark via `prefers-color-scheme`) and `lucide-react` icons. It doesn't use shadcn/ui yet. The collector URL is read at request time (`AGENTSPACE_PUBLIC_URL`) and can be overridden with `?collector=` / `?workspace=`. It's not `NEXT_PUBLIC_*`, because Next.js freezes those at build time.
+**Why:**
+- The view has a handful of components, so a component library adds weight without payoff yet.
+- One Docker image has to work behind any URL.
+- Brand and visual identity are deferred to Phase 2 (the 3D office), where they matter.
