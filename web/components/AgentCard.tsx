@@ -22,7 +22,7 @@ export function AgentCard({ agent, now, selected, onSelect }: Props) {
       type="button"
       data-status={agent.status}
       aria-pressed={selected}
-      aria-label={`${agent.name}, ${agent.status.replace("_", " ")}. ${selected ? "Showing only this agent in the log." : "Filter the log to this agent."}`}
+      aria-label={`${agent.name}, ${agent.status.replace("_", " ")}. ${selected ? "Close details." : "Show details."}`}
       onClick={() => onSelect(agent.agent_id)}
       className={`agent-card group flex w-full flex-col gap-3 rounded-xl border bg-surface p-4 text-left transition-[border-color,box-shadow] duration-150 hover:border-[var(--st-dot)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         selected ? "border-accent shadow-[0_0_0_1px_var(--accent)]" : "border-border"

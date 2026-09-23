@@ -11,6 +11,7 @@ import { useSource, type SourceConfig } from "@/lib/useSource";
 import { useThrottled } from "@/lib/useThrottled";
 import { useViewMode, type ViewMode } from "@/lib/useViewMode";
 import { Grid2D } from "./office2d/Grid2D";
+import { AgentPanel } from "./panels/AgentPanel";
 import { EventLog } from "./panels/EventLog";
 
 const OfficeScene = dynamic(() => import("./office/OfficeScene"), {
@@ -36,6 +37,8 @@ export function OfficeApp({ source, showFps = false }: Props) {
   const agents = useMemo(() => Object.values(agentsById), [agentsById]);
   const run = useThrottled(useOffice((s) => latestRun(s.runs)), 250);
   const [logFilter, setLogFilter] = useState<string | null>(null);
+  const selectedAgent = useOffice((s) => s.selectedAgent);
+  const select = useOffice((s) => s.select);
 
   const workspace = source.kind === "live" ? source.workspace : source.kind === "stress" ? "stress" : "demo";
   const collectorUrl = source.kind === "live" ? source.collectorUrl : null;
@@ -73,7 +76,17 @@ export function OfficeApp({ source, showFps = false }: Props) {
               <Grid2D />
             )}
           </div>
-          <EventLog events={events} agents={agents} agentFilter={logFilter} onAgentFilter={setLogFilter} />
+          {selectedAgent ? (
+            <AgentPanel
+              agentId={selectedAgent}
+              onShowInLog={(id) => {
+                setLogFilter(id);
+                select(null);
+              }}
+            />
+          ) : (
+            <EventLog events={events} agents={agents} agentFilter={logFilter} onAgentFilter={setLogFilter} />
+          )}
         </main>
       )}
     </div>
