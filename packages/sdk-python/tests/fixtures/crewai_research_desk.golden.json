@@ -1,21 +1,27 @@
 [
  [
-  "run.started",
-  null,
-  null,
-  "Research Desk"
- ],
- [
   "agent.registered",
   "researcher",
   "research-desk",
   "Researcher"
  ],
  [
-  "step.started",
+  "agent.registered",
+  "writer",
+  "research-desk",
+  "Writer"
+ ],
+ [
+  "agent.status",
   "researcher",
   "research-desk",
-  "research"
+  "done"
+ ],
+ [
+  "agent.status",
+  "researcher",
+  "research-desk",
+  "idle"
  ],
  [
   "agent.status",
@@ -28,6 +34,54 @@
   "researcher",
   "research-desk",
   "thinking"
+ ],
+ [
+  "agent.status",
+  "researcher",
+  "research-desk",
+  "thinking"
+ ],
+ [
+  "agent.status",
+  "researcher",
+  "research-desk",
+  "thinking"
+ ],
+ [
+  "agent.status",
+  "researcher",
+  "research-desk",
+  "using_tool"
+ ],
+ [
+  "agent.status",
+  "writer",
+  "research-desk",
+  "done"
+ ],
+ [
+  "agent.status",
+  "writer",
+  "research-desk",
+  "idle"
+ ],
+ [
+  "agent.status",
+  "writer",
+  "research-desk",
+  "thinking"
+ ],
+ [
+  "agent.status",
+  "writer",
+  "research-desk",
+  "thinking"
+ ],
+ [
+  "handoff",
+  "researcher",
+  "research-desk",
+  "researcher->writer"
  ],
  [
   "llm.call",
@@ -36,10 +90,52 @@
   "scripted-fake"
  ],
  [
-  "agent.status",
+  "llm.call",
   "researcher",
   "research-desk",
-  "using_tool"
+  "scripted-fake"
+ ],
+ [
+  "llm.call",
+  "writer",
+  "research-desk",
+  "scripted-fake"
+ ],
+ [
+  "run.finished",
+  null,
+  null,
+  "ok"
+ ],
+ [
+  "run.started",
+  null,
+  null,
+  "Research Desk"
+ ],
+ [
+  "step.finished",
+  "researcher",
+  "research-desk",
+  "Researcher"
+ ],
+ [
+  "step.finished",
+  "writer",
+  "research-desk",
+  "Writer"
+ ],
+ [
+  "step.started",
+  "researcher",
+  "research-desk",
+  "research"
+ ],
+ [
+  "step.started",
+  "writer",
+  "research-desk",
+  "report"
  ],
  [
   "tool.call",
@@ -52,101 +148,5 @@
   "researcher",
   "research-desk",
   "web_search"
- ],
- [
-  "agent.status",
-  "researcher",
-  "research-desk",
-  "thinking"
- ],
- [
-  "agent.status",
-  "researcher",
-  "research-desk",
-  "thinking"
- ],
- [
-  "llm.call",
-  "researcher",
-  "research-desk",
-  "scripted-fake"
- ],
- [
-  "step.finished",
-  "researcher",
-  "research-desk",
-  "Researcher"
- ],
- [
-  "agent.status",
-  "researcher",
-  "research-desk",
-  "idle"
- ],
- [
-  "agent.registered",
-  "writer",
-  "research-desk",
-  "Writer"
- ],
- [
-  "handoff",
-  "researcher",
-  "research-desk",
-  "researcher->writer"
- ],
- [
-  "step.started",
-  "writer",
-  "research-desk",
-  "report"
- ],
- [
-  "agent.status",
-  "writer",
-  "research-desk",
-  "thinking"
- ],
- [
-  "agent.status",
-  "writer",
-  "research-desk",
-  "thinking"
- ],
- [
-  "llm.call",
-  "writer",
-  "research-desk",
-  "scripted-fake"
- ],
- [
-  "step.finished",
-  "writer",
-  "research-desk",
-  "Writer"
- ],
- [
-  "agent.status",
-  "writer",
-  "research-desk",
-  "idle"
- ],
- [
-  "agent.status",
-  "researcher",
-  "research-desk",
-  "done"
- ],
- [
-  "agent.status",
-  "writer",
-  "research-desk",
-  "done"
- ],
- [
-  "run.finished",
-  null,
-  null,
-  "ok"
  ]
 ]

@@ -12,13 +12,12 @@ version = "0.1.0.dev0"
 source = { editable = "../../packages/sdk-python" }
 
 [package.metadata]
-requires-dist = [
-    { name = "langchain-core", marker = "extra == 'langgraph'", specifier = ">=0.3" },
-    { name = "pydantic", marker = "extra == 'models'", specifier = ">=2.5" },
-]
-provides-extras = ["models", "langgraph"]
+requires-dist = [{ name = "pydantic", marker = "extra == 'models'", specifier = ">=2.5" }]
+provides-extras = ["models"]
 
 [package.metadata.requires-dev]
+claude-agent-sdk = [{ name = "claude-agent-sdk", specifier = ">=0.2" }]
+crewai = [{ name = "crewai", marker = "python_full_version < '3.14'", specifier = ">=1.10" }]
 dev = [
     { name = "datamodel-code-generator", specifier = ">=0.26" },
     { name = "jsonschema", specifier = ">=4.22" },
@@ -29,6 +28,7 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
 ]
+openai-agents = [{ name = "openai-agents", specifier = ">=0.22" }]
 
 [[package]]
 name = "annotated-types"

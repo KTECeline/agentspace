@@ -28,8 +28,10 @@ def kickoff(crew: Any = None) -> Any:
 
 
 def normalize(events: list[dict[str, Any]]) -> list[list[Any]]:
+    """Order-independent summary. CrewAI emits several events per millisecond from a thread
+    pool, so exact ordering varies by machine; ordering that matters is asserted separately."""
     out = []
-    for e in sorted(events, key=lambda e: (e["ts"], TYPE_ORDER.get(e["type"], 5))):
+    for e in events:
         d = e["data"]
         detail = (
             d.get("status")
@@ -39,17 +41,7 @@ def normalize(events: list[dict[str, Any]]) -> list[list[Any]]:
             or e.get("model")
         )
         out.append([e["type"], e["agent_id"], e.get("team_id"), detail])
-    return out
-
-
-# Tie-break for events with the same timestamp (CrewAI emits several per millisecond).
-TYPE_ORDER = {
-    "run.started": 0,
-    "agent.registered": 1,
-    "handoff": 2,
-    "step.started": 3,
-    "run.finished": 9,
-}
+    return sorted(out, key=lambda r: json.dumps(r))
 
 
 def test_research_desk_matches_golden(
@@ -87,6 +79,13 @@ def test_details(collector: FakeCollector) -> None:
     assert {e["team_id"] for e in ev if e["agent_id"]} == {"research-desk"}
     finished = [e for e in ev if e["type"] == "run.finished"]
     assert finished and finished[0]["data"]["status"] == "ok"
+    # Ordering that matters (by CrewAI's own timestamps):
+    by_ts = sorted(ev, key=lambda e: e["ts"])
+    assert by_ts[0]["type"] == "run.started" and by_ts[-1]["type"] == "run.finished"
+    researcher_done = max(
+        e["ts"] for e in ev if e["type"] == "step.finished" and e["agent_id"] == "researcher"
+    )
+    assert handoff["ts"] >= researcher_done
     # final statuses: everyone done
     last: dict[str, str] = {}
     for e in sorted((e for e in ev if e["type"] == "agent.status"), key=lambda e: e["ts"]):
