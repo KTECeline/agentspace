@@ -32,6 +32,8 @@ def normalize(events: list[dict[str, Any]]) -> list[list[Any]]:
     pool, so exact ordering varies by machine; ordering that matters is asserted separately."""
     out = []
     for e in events:
+        if e["type"] == "agent.status":
+            continue  # which intermediate statuses survive depends on arrival order (thread pool)
         d = e["data"]
         detail = (
             d.get("status")
@@ -131,3 +133,68 @@ def test_tool_error_is_recorded(collector: FakeCollector) -> None:
 
 def test_noop_without_init() -> None:
     assert "A live office" in str(build_research_desk().kickoff())
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
+def test_survives_out_of_order_delivery(
+    seed: int, collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    """CrewAI runs handlers on a thread pool. Replay a real crew's events in shuffled order."""
+    import random
+
+    from crewai.events.types import agent_events as ae
+    from crewai.events.types import crew_events as ce
+    from crewai.events.types import llm_events as le
+    from crewai.events.types import tool_usage_events as tu
+
+    from agentspace.adapters import crewai as adapter
+
+    captured: list[tuple[Any, Any]] = []
+    kinds = [
+        ce.CrewKickoffStartedEvent, ce.CrewKickoffCompletedEvent,
+        ae.AgentExecutionStartedEvent, ae.AgentExecutionCompletedEvent,
+        le.LLMCallStartedEvent, le.LLMCallCompletedEvent,
+        tu.ToolUsageStartedEvent, tu.ToolUsageFinishedEvent,
+    ]  # fmt: skip
+    with crewai_event_bus.scoped_handlers():
+        for kind in kinds:
+            crewai_event_bus.on(kind)(lambda src, ev: captured.append((src, ev)))
+        build_research_desk().kickoff()
+        crewai_event_bus.flush()
+
+    init_fast(collector.url)
+    listener = adapter._listener
+    assert listener is not None
+    names = {
+        ce.CrewKickoffStartedEvent: "_crew_started",
+        ce.CrewKickoffCompletedEvent: "_crew_completed",
+        ae.AgentExecutionStartedEvent: "_agent_started",
+        ae.AgentExecutionCompletedEvent: "_agent_completed",
+        le.LLMCallStartedEvent: "_llm_started",
+        le.LLMCallCompletedEvent: "_llm_completed",
+        tu.ToolUsageStartedEvent: "_tool_started",
+        tu.ToolUsageFinishedEvent: "_tool_finished",
+    }
+    # The crew must start first (a run needs to exist); everything else arrives in any order.
+    first, rest = captured[0], captured[1:]
+    random.Random(seed).shuffle(rest)
+    for src, ev in [first, *rest]:
+        name = names[type(ev)]
+        listener._guard(name, getattr(listener, name), src, ev)
+    assert agentspace.flush()
+
+    ev = collector.events
+    assert_valid_events(validator, ev)
+    no_team = [
+        (e["type"], e["agent_id"]) for e in ev if e["agent_id"] and e["team_id"] != "research-desk"
+    ]
+    assert not no_team, f"every agent event has its team: {no_team}"
+    assert {e["agent_id"] for e in ev if e["type"] == "llm.call"} == {"researcher", "writer"}
+    last: dict[str, tuple[str, str]] = {}
+    for e in ev:
+        if e["type"] == "agent.status":
+            prev = last.get(e["agent_id"])
+            if prev is None or e["ts"] >= prev[0]:
+                last[e["agent_id"]] = (e["ts"], e["data"]["status"])
+    assert {k: v[1] for k, v in last.items()} == {"researcher": "done", "writer": "done"}
+    assert [e["type"] for e in ev].count("run.finished") == 1

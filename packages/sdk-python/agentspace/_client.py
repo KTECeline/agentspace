@@ -110,7 +110,7 @@ class Client:
             parent_id = current_step.get()
         rid = run_id or current_run.get() or self.default_run()
         if agent_id is not None:
-            self._ensure_registered(rid, agent_id)
+            self._ensure_registered(rid, agent_id, team_id)
 
         event_id = new_id()
         event: dict[str, Any] = {
@@ -170,7 +170,7 @@ class Client:
         info = self._agents.get(agent_id) if agent_id else None
         return info.team_id if info else None
 
-    def _ensure_registered(self, run_id: str, agent_id: str) -> None:
+    def _ensure_registered(self, run_id: str, agent_id: str, team_id: str | None = None) -> None:
         key = (run_id, agent_id)
         if key in self._registered:
             return
@@ -178,7 +178,8 @@ class Client:
             if key in self._registered:
                 return
             self._registered.add(key)
-            info = self._agents.get(agent_id) or AgentInfo(agent_id, agent_id, None)
+            # Unknown agent: register it with the team of the event that mentioned it.
+            info = self._agents.get(agent_id) or AgentInfo(agent_id, agent_id, team_id)
         self.emit(
             "agent.registered",
             {

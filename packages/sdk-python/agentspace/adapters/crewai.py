@@ -50,6 +50,10 @@ class _Run:
     run_id: str
     team_id: str | None
     started: datetime
+    finished: bool = False
+    #: when the crew finished, and the status every agent ends in ("done" or "error")
+    finished_at: datetime | None = None
+    final: str = "done"
     last_agent: str | None = None
     agents: set[str] = field(default_factory=set)
     #: agent_id -> step_id of its current execution
@@ -63,7 +67,7 @@ class AgentSpaceCrewListener(BaseEventListener):
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._runs: list[_Run] = []  # active runs, newest last
+        self._runs: list[_Run] = []  # recent runs, newest last (finished ones kept for stragglers)
         self._started: dict[str, datetime] = {}  # event_id -> timestamp (for durations)
         super().__init__()
 
@@ -74,7 +78,20 @@ class AgentSpaceCrewListener(BaseEventListener):
         return _api.get_client()
 
     def _run(self) -> _Run | None:
+        # The newest run, even if already finished: CrewAI's thread pool can deliver an agent's
+        # last events after "crew completed", and they still belong to that run.
         return self._runs[-1] if self._runs else None
+
+    def _ensure_agent(self, run: _Run, agent_id: str, name: str | None) -> None:
+        """Register the agent with its team before anything is emitted for it: its "execution
+        started" event may be handled after its first LLM or tool event."""
+        client = self._client()
+        if client is None or agent_id in run.agents:
+            return
+        run.agents.add(agent_id)
+        client.upsert_agent(AgentInfo(agent_id, name or agent_id, run.team_id, framework="crewai"))
+        if run.finished_at is not None:  # first seen after the crew already finished
+            self._set_status(run, agent_id, run.finished_at, run.final, None)
 
     def _emit(
         self,
@@ -83,31 +100,46 @@ class AgentSpaceCrewListener(BaseEventListener):
         type: str,
         data: dict[str, Any],
         agent_id: str | None,
+        at: datetime | None = None,
         **fields: Any,
     ) -> None:
         client = self._client()
         if client is None:
             return
+        if agent_id and ev is not None and agent_id == _agent_id(ev):
+            self._ensure_agent(run, agent_id, _role(ev))
         fields.setdefault("team_id", run.team_id if agent_id else None)
         fields.setdefault("parent_id", run.steps.get(agent_id) if agent_id else None)
-        client.emit(type, data, run_id=run.run_id, agent_id=agent_id, ts=_iso(_ts(ev)), **fields)
+        when = at or _ts(ev)
+        client.emit(type, data, run_id=run.run_id, agent_id=agent_id, ts=_iso(when), **fields)
 
     def _status(
         self, run: _Run, ev: Any, agent_id: str | None, status: str, detail: str | None = None
     ) -> None:
         if not agent_id:
             return
+        if agent_id == _agent_id(ev):
+            self._ensure_agent(run, agent_id, _role(ev))
         when = _ts(ev)
+        if run.finished_at is not None and when <= run.finished_at and status != "error":
+            # A straggler from before the crew finished: the agent's final state is the crew's.
+            when, status, detail = run.finished_at, run.final, None
+        self._set_status(run, agent_id, when, status, detail)
+
+    def _set_status(
+        self, run: _Run, agent_id: str, when: datetime, status: str, detail: str | None
+    ) -> None:
         prev = run.status.get(agent_id)
         if prev and (prev[0] > when or (prev[1], prev[2]) == (status, detail)):
             return  # stale (arrived out of order) or unchanged
         run.status[agent_id] = (when, status, detail)
         self._emit(
             run,
-            ev,
+            None,
             "agent.status",
             {"status": status, "detail": truncate(detail, 500) if detail else None},
             agent_id,
+            at=when,
         )
 
     def _content(self, field_name: str, value: Any) -> Any:
@@ -156,7 +188,7 @@ class AgentSpaceCrewListener(BaseEventListener):
             return
         name = getattr(ev, "crew_name", None) or getattr(source, "name", None) or "crew"
         run = _Run(new_id(), slugify(str(name)), _ts(ev))
-        self._runs.append(run)
+        self._runs = [*self._runs[-4:], run]  # keep a few finished runs for stragglers
         client.emit(
             "run.started",
             {
@@ -175,14 +207,15 @@ class AgentSpaceCrewListener(BaseEventListener):
     def _finish_run(self, ev: Any, ok: bool, error: str | None) -> None:
         run = self._run()
         client = self._client()
-        if run is None or client is None:
+        if run is None or client is None or run.finished:
             return
-        self._runs.remove(run)
-        final = "done" if ok else "error"
+        run.finished = True
+        run.final = "done" if ok else "error"
+        run.finished_at = _ts(ev)
         for agent_id in sorted(run.agents):
             prev = run.status.get(agent_id)
             if not prev or prev[1] != "error":
-                self._status(run, ev, agent_id, final)
+                self._set_status(run, agent_id, run.finished_at, run.final, None)
         if error:
             client.emit(
                 "error",
