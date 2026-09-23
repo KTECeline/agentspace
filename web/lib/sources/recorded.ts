@@ -48,7 +48,8 @@ export function recordedSource(recording: Recording, workspace = "demo", opts: P
       iteration += 1;
       const suffix = iteration === 1 ? "" : `-${iteration}`;
       const start = Date.now();
-      sink.send(emitter.snapshot());
+      // Start from an empty office once; later loops keep everyone at their desks (no blink).
+      if (iteration === 1) sink.send(emitter.snapshot());
       // Group events that fire at the same moment into one batch.
       const groups = new Map<number, AgentSpaceEvent[]>();
       for (const { at, event } of timeline) {

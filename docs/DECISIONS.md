@@ -106,3 +106,15 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 ## D-021 · Brand: cozy low-poly office (style A) (2026-09-24)
 **Decision:** a warm cream and pastel palette with a terracotta accent, and warm dark mode as "the office after hours". Fredoka is the display face; Geist is used for the UI. Documented in `brand.md`. All token pairs are checked to be ≥ 4.5:1 in both themes.
 **Why:** chosen by the maintainer. It stands out from dark "mission control" AI tools and reads well in a README GIF.
+
+## D-022 · 3D office rendering choices (2026-09-24)
+**Decision:**
+- An orthographic isometric camera with `MapControls`: pan and zoom, no rotation.
+- Avatars and furniture are built in code from low-poly primitives, so there are no model files or asset licenses. Static furniture is drawn with one `InstancedMesh` per part (9 draw calls for any number of desks).
+- Labels and speech bubbles are **one DOM layer** positioned by a single projector in `useFrame`, not drei `<Html>`. It only writes a transform when a label actually moves.
+- DOM-heavy panels (event log, roster) are throttled to 4 or 2 updates per second.
+- Body colors are assigned in first-seen order, so teammates don't share a color.
+
+**Why:**
+- drei `<Html>` creates one React root per label. Under React 19 StrictMode those roots get unmounted mid-render, so rarely-updated labels stayed blank, and 50+ roots is expensive.
+- Measured on the dev MacBook Air, production build, `/demo?stress=50` (50 agents, 100 events/s): **58–60 fps**. Before the optimizations it was 36 fps in dev mode.

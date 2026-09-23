@@ -10,11 +10,13 @@ interface OfficeStore extends OfficeState {
   connection: Connection;
   sourceError: string | null;
   selectedAgent: string | null;
+  hoveredAgent: string | null;
   apply: (msgs: WsServerMessage[]) => void;
   reset: () => void;
   setConnection: (c: Connection) => void;
   setSourceError: (e: string | null) => void;
   select: (agentId: string | null) => void;
+  hover: (agentId: string | null) => void;
 }
 
 export const useOffice = create<OfficeStore>()((set) => ({
@@ -22,16 +24,18 @@ export const useOffice = create<OfficeStore>()((set) => ({
   connection: "connecting",
   sourceError: null,
   selectedAgent: null,
+  hoveredAgent: null,
   apply: (msgs) =>
     set((s) => {
       let next: OfficeState = s;
       for (const m of msgs) next = reduce(next, m);
       return next === s ? s : next;
     }),
-  reset: () => set({ ...emptyState, selectedAgent: null }),
+  reset: () => set({ ...emptyState, selectedAgent: null, hoveredAgent: null }),
   setConnection: (connection) => set({ connection }),
   setSourceError: (sourceError) => set({ sourceError }),
   select: (selectedAgent) => set({ selectedAgent }),
+  hover: (hoveredAgent) => set({ hoveredAgent }),
 }));
 
 // ---------------------------------------------------------------------------

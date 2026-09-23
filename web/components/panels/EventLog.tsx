@@ -43,7 +43,7 @@ export function EventLog({ events, agents, agentFilter, onAgentFilter }: Props) 
   const lastSeq = events.at(-1)?.seq ?? 0;
 
   return (
-    <section aria-labelledby="log-title" className="flex min-h-0 flex-col rounded-xl border border-border bg-surface">
+    <section aria-labelledby="log-title" className="flex max-h-[70vh] min-h-0 flex-col rounded-xl border border-border bg-surface lg:max-h-none">
       <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
         <h2 id="log-title" className="mr-auto font-semibold">
           Event log

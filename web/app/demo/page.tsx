@@ -9,7 +9,8 @@ export const metadata: Metadata = {
 /**
  * Recorded demo: plays /recordings/dev-team.json in a loop with no collector.
  *   ?speed=2        play faster
- *   ?stress=50      synthetic load instead: 50 agents at ?rate=100 events/s
+ *   ?stress=50      synthetic load instead: 50 agents at ?rate=100 events/s (shows an FPS meter)
+ *   ?fps            show the FPS meter
  */
 export default async function DemoPage({ searchParams }: PageProps<"/demo">) {
   const params = await searchParams;
@@ -21,5 +22,5 @@ export default async function DemoPage({ searchParams }: PageProps<"/demo">) {
     params.stress !== undefined
       ? ({ kind: "stress", agents: num(params.stress, 50, 200), rate: num(params.rate, 100, 1000) } as const)
       : ({ kind: "recording", url: "/recordings/dev-team.json", speed: num(params.speed, 1, 16) } as const);
-  return <OfficeApp source={source} />;
+  return <OfficeApp source={source} showFps={params.stress !== undefined || params.fps !== undefined} />;
 }

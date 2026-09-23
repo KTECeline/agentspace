@@ -1,40 +1,53 @@
 "use client";
 
-import { useState } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { Box, LayoutGrid, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
 import { formatCost, formatDuration, formatTokens } from "@/lib/format";
 import { latestRun } from "@/lib/state";
 import { useOffice, type Connection } from "@/lib/store";
 import { useSource, type SourceConfig } from "@/lib/useSource";
+import { useThrottled } from "@/lib/useThrottled";
+import { useViewMode, type ViewMode } from "@/lib/useViewMode";
 import { Grid2D } from "./office2d/Grid2D";
 import { EventLog } from "./panels/EventLog";
 
+const OfficeScene = dynamic(() => import("./office/OfficeScene"), {
+  ssr: false,
+  loading: () => <div aria-busy="true" aria-label="Loading 3D office" className="h-full min-h-[420px] animate-pulse rounded-xl border border-border bg-surface motion-reduce:animate-none" />,
+});
+
 interface Props {
   source: SourceConfig;
+  showFps?: boolean;
 }
 
-export function OfficeApp({ source }: Props) {
+export function OfficeApp({ source, showFps = false }: Props) {
+  const view = useViewMode();
   const { retry, error } = useSource(source);
   const ready = useOffice((s) => s.ready);
   const connection = useOffice((s) => s.connection);
   const agentCount = useOffice((s) => Object.keys(s.agents).length);
-  const events = useOffice((s) => s.events);
-  const agents = useOffice(useShallow((s) => Object.values(s.agents)));
-  const run = useOffice((s) => latestRun(s.runs));
+  // The log is DOM-heavy; 4 updates/s is plenty for reading and keeps 100 events/s cheap.
+  const events = useThrottled(useOffice((s) => s.events), 250);
+  // Throttled like the events: agent rows change on almost every event under load.
+  const agentsById = useThrottled(useOffice((s) => s.agents), 250);
+  const agents = useMemo(() => Object.values(agentsById), [agentsById]);
+  const run = useThrottled(useOffice((s) => latestRun(s.runs)), 250);
   const [logFilter, setLogFilter] = useState<string | null>(null);
 
   const workspace = source.kind === "live" ? source.workspace : source.kind === "stress" ? "stress" : "demo";
   const collectorUrl = source.kind === "live" ? source.collectorUrl : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-4 p-4 lg:h-dvh lg:p-6">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-4 p-4 lg:h-dvh lg:flex-none lg:p-6">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="font-display text-xl font-semibold tracking-tight">AgentSpace</h1>
         <span className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-muted">workspace: {workspace}</span>
         <ConnectionPill connection={connection} onRetry={retry} />
         {run && <RunSummary run={run} />}
+        <ViewToggle mode={view.mode} onChange={view.setMode} webgl={view.webgl} />
       </header>
 
       {error ? (
@@ -50,13 +63,50 @@ export function OfficeApp({ source }: Props) {
       ) : !ready ? (
         <LoadingSkeleton />
       ) : (
-        <main className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
-          <div className="min-h-0 overflow-y-auto pr-1">
-            {agentCount === 0 && collectorUrl ? <EmptyOffice collectorUrl={collectorUrl} workspace={workspace} /> : <Grid2D />}
+        <main className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)] lg:grid-rows-[minmax(0,1fr)]">
+          <div className={view.mode === "3d" ? "flex h-[60vh] min-h-[420px] flex-col lg:h-auto lg:min-h-0" : "min-h-0 overflow-y-auto pr-1"}>
+            {agentCount === 0 && collectorUrl ? (
+              <EmptyOffice collectorUrl={collectorUrl} workspace={workspace} />
+            ) : !view.ready ? null : view.mode === "3d" ? (
+              <OfficeScene showFps={showFps} />
+            ) : (
+              <Grid2D />
+            )}
           </div>
           <EventLog events={events} agents={agents} agentFilter={logFilter} onAgentFilter={setLogFilter} />
         </main>
       )}
+    </div>
+  );
+}
+
+function ViewToggle({ mode, onChange, webgl }: { mode: ViewMode; onChange: (m: ViewMode) => void; webgl: boolean }) {
+  const options: { value: ViewMode; label: string; Icon: typeof Box }[] = [
+    { value: "3d", label: "3D", Icon: Box },
+    { value: "2d", label: "2D", Icon: LayoutGrid },
+  ];
+  return (
+    <div role="radiogroup" aria-label="Office view" className="flex rounded-lg border border-border bg-surface p-0.5">
+      {options.map(({ value, label, Icon }) => {
+        const disabled = value === "3d" && !webgl;
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={mode === value}
+            disabled={disabled}
+            title={disabled ? "3D needs WebGL, which this browser doesn't provide" : undefined}
+            onClick={() => onChange(value)}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+              mode === value ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
+            }`}
+          >
+            <Icon aria-hidden className="size-4" />
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -55,13 +55,16 @@ describe("recorded source", () => {
     expect(sink.setConnection).toHaveBeenCalledWith("recording");
   });
 
-  it("loops with fresh ids and resets between loops", () => {
+  it("loops with fresh run ids, keeping the same agents at their desks", () => {
     const { sink, state, msgs } = collect();
     const stop = recordedSource(recording, "demo", { loop: true, gapMs: 1000 })(sink);
     vi.advanceTimersByTime(60_000);
     stop();
-    expect(msgs.filter((m) => m.type === "snapshot").length).toBeGreaterThan(1);
-    expect(Object.keys(state().runs).every((id) => id.includes("-"))).toBe(true);
+    expect(msgs.filter((m) => m.type === "snapshot")).toHaveLength(1);
+    const runIds = Object.keys(state().runs);
+    expect(runIds.length).toBeGreaterThan(2);
+    expect(new Set(runIds).size).toBe(runIds.length);
+    expect(Object.keys(state().agents).sort()).toEqual(["engineer", "manager", "triage"]);
   });
 });
 
