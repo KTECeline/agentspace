@@ -1,3 +1,4 @@
+import { createGunzip } from "node:zlib";
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -6,6 +7,8 @@ import type { Config } from "./config.js";
 import { Hub } from "./hub.js";
 import { Store } from "./store.js";
 import { validateEvent } from "./validate.js";
+import { OtlpAssembler } from "./otlp/assembler.js";
+import { protobufToJson, spansFromJson } from "./otlp/decode.js";
 
 const MAX_BATCH = 1000;
 const MAX_ERRORS_REPORTED = 5;
@@ -27,9 +30,45 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
   await app.register(cors, { origin: config.corsOrigin === "*" ? true : config.corsOrigin.split(",") });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
 
+  const otlp = new OtlpAssembler({ holdMs: config.otlpHoldMs, captureContent: config.otlpCaptureContent });
+  // Spans held for a parent that never arrived get released by this timer.
+  const otlpTimer = setInterval(() => store_(otlp.flush()), 1000);
+  otlpTimer.unref();
+
   app.addHook("onClose", () => {
+    clearInterval(otlpTimer);
     if (!store) db.close();
   });
+
+  // gzip request bodies (OTLP exporters often compress).
+  app.addHook("preParsing", async (req, _reply, payload) => {
+    if (req.headers["content-encoding"] === "gzip") {
+      delete req.headers["content-encoding"];
+      const unzipped = payload.pipe(createGunzip()) as typeof payload & { receivedEncodedLength?: number };
+      // Fastify checks Content-Length against `receivedEncodedLength`: count the *compressed* bytes.
+      unzipped.receivedEncodedLength = 0;
+      payload.on("data", (chunk: Buffer) => {
+        unzipped.receivedEncodedLength! += chunk.length;
+      });
+      return unzipped;
+    }
+    return payload;
+  });
+  app.addContentTypeParser("application/x-protobuf", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+
+  /** Validate, store, and broadcast events from any ingest path. */
+  function store_(events: AgentSpaceEvent[]): { accepted: number; duplicates: number; rejected: number } {
+    if (!events.length) return { accepted: 0, duplicates: 0, rejected: 0 };
+    const valid: AgentSpaceEvent[] = [];
+    for (const ev of events) {
+      const res = validateEvent(ev);
+      if (res.ok) valid.push(res.event);
+      else app.log.warn({ id: ev.id, message: res.message }, "dropped invalid converted event");
+    }
+    const { inserted, duplicates, agents, runs } = db.insert(valid);
+    fanOut(hub, inserted, agents, runs);
+    return { accepted: inserted.length, duplicates, rejected: events.length - valid.length };
+  }
 
   app.get("/healthz", () => ({ ok: true, subscribers: hub.count() }));
 
@@ -62,6 +101,26 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
 
     const res: IngestResponse = { accepted: inserted.length, duplicates, rejected, errors };
     return res;
+  });
+
+  // ---- OTLP/HTTP traces (JSON or protobuf) ----
+
+  app.post("/v1/traces", async (req, reply) => {
+    const isProto = String(req.headers["content-type"] ?? "").includes("protobuf");
+    let spans;
+    try {
+      const body = isProto ? protobufToJson(req.body as Buffer) : req.body;
+      spans = spansFromJson(body);
+    } catch (err) {
+      return reply.code(400).send({ error: `invalid OTLP payload: ${(err as Error).message}` });
+    }
+    const workspace = req.headers["x-agentspace-workspace"];
+    const events = otlp.ingest(spans, typeof workspace === "string" && workspace ? workspace : undefined);
+    const res = store_(events);
+    req.log.debug({ spans: spans.length, ...res, pending: otlp.pendingCount }, "otlp traces");
+    // OTLP success response: an empty ExportTraceServiceResponse.
+    if (isProto) return reply.header("content-type", "application/x-protobuf").send(Buffer.alloc(0));
+    return {};
   });
 
   // ---- read API ----

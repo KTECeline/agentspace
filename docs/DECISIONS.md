@@ -118,3 +118,16 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 **Why:**
 - drei `<Html>` creates one React root per label. Under React 19 StrictMode those roots get unmounted mid-render, so rarely-updated labels stayed blank, and 50+ roots is expensive.
 - Measured on the dev MacBook Air, production build, `/demo?stress=50` (50 agents, 100 events/s): **58–60 fps**. Before the optimizations it was 36 fps in dev mode.
+
+## D-023 · OTLP ingest: embedded protos, span assembler with a parent hold (2026-09-24)
+**Decision:**
+- `POST /v1/traces` on the collector's normal port. It takes JSON or protobuf, optionally gzipped.
+- The OTLP `.proto` files (v1.11.0) are embedded as strings and parsed with `protobufjs`, so there's no codegen step and no runtime files.
+- Spans become events in `OtlpAssembler`. Non-agent spans wait up to 10 s for their parent so they inherit the right agent; agent spans are never held. Event ids are derived from span ids.
+- Content attributes are dropped unless `AGENTSPACE_OTLP_CAPTURE_CONTENT=true`.
+- It's tested with synthetic traces *and* with raw protobuf recorded from the real OpenTelemetry Python exporter.
+
+**Why:**
+- Exporters send spans when they *end*: children first, the root last, and often in separate batches. Without holding them, most tool and LLM spans would have no agent.
+- Holding agent spans too would delay every agent until the whole workflow ended.
+- The standard port 4318 isn't exposed yet, to keep the setup to one port. Users set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` instead.

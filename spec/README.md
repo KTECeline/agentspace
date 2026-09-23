@@ -55,7 +55,19 @@ These are mapped against [open-telemetry/semantic-conventions-genai](https://git
 | `error.data.kind` | `error.type` |
 | `attributes` | any other span attributes |
 
-These have no OTel equivalent yet, so they're AgentSpace-only: `agent.status`, `handoff`, `message`, `approval.*`, `team_id`, `cost_usd`. If they arrive over OTLP, the collector will read them from span events and attributes under an `agentspace.*` prefix.
+These have no OTel equivalent yet, so they're AgentSpace-only: `agent.status`, `handoff`, `message`, `approval.*`, `team_id`, `cost_usd`.
+
+### OTLP ingest (`POST /v1/traces`)
+
+The collector accepts OTLP/HTTP traces as JSON or protobuf, optionally gzipped, and applies the table above in reverse (`server/src/otlp/`). What it adds:
+
+- **Handoffs:** a new agent span in a trace is recorded as a handoff from the previous agent, or from the enclosing agent span when one agent delegates to another.
+- **AgentSpace extensions:**
+  - resource attributes `agentspace.workspace` and `agentspace.team` (the team falls back to `service.name`);
+  - span events `agentspace.status {status, detail}` and `agentspace.handoff {to_agent, reason}`.
+- **Ordering:** exporters send spans when they *end*, so child spans are held (up to `AGENTSPACE_OTLP_HOLD_MS`, default 10 s) until their parent span arrives. Agent spans are never held.
+- **Idempotent:** event ids come from span ids, so a re-exported batch doesn't double count.
+- **Privacy:** `gen_ai.input/output.messages` and tool arguments/results are dropped unless `AGENTSPACE_OTLP_CAPTURE_CONTENT=true`.
 
 ## Versioning
 
