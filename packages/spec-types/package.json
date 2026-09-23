@@ -1,0 +1,21 @@
+{
+  "name": "@agentspace/spec-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript types and JSON Schema for the AgentSpace event spec. Generated from spec/ — do not edit src/generated.ts or src/schema.json by hand.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema.json": "./src/schema.json"
+  },
+  "scripts": {
+    "gen": "node scripts/gen.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "echo 'no tests (generated package)'"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^5.9.2"
+  }
+}

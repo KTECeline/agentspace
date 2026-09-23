@@ -28,3 +28,17 @@ Short records of why each choice was made. Newest at the bottom. Format: context
 ## D-007 · Monorepo tooling: pnpm workspaces + uv (2026-09-23)
 **Decision:** pnpm workspace for `server/`, `web/`, `packages/spec-types`; uv project for `packages/sdk-python`. A top-level `Makefile` wraps both.
 **Why:** both are fast, standard, and already installed. No Turborepo/Nx; the graph is tiny.
+
+## D-008 · Python SDK has zero runtime dependencies; pydantic models are an extra (2026-09-23)
+The brief asks for pydantic types generated from the schema. They are generated (`agentspace.models`), but the SDK's hot path builds plain dicts and sends them with the stdlib (`urllib`, `threading`).
+**Decision:** `dependencies = []`. `pip install agentspace[models]` adds pydantic for people who want typed models. The tests validate every event the SDK emits against both the JSON Schema and the pydantic models.
+**Why:** a tracing SDK must never cause version conflicts in the host app (pydantic v1 vs v2, httpx pins). Building dicts is also cheaper than building models, which matters for the < 1 ms/event target.
+
+## D-009 · Spec adds `step.started` / `step.finished` (2026-09-23)
+The brief lists `step` as an entity but has no event type for it.
+**Decision:** add `step.started` / `step.finished` with a `step_id`. Every other event's `parent_id` points at the enclosing `step_id`.
+**Why:** this maps 1:1 to OTel span start/end, so OTLP import/export stays simple, and the UI can show nested timelines and per-step durations.
+
+## D-010 · `agent_id`, `team_id`, `parent_id` are required-but-nullable (2026-09-23)
+**Decision:** every event carries the keys (as the brief says). Run-level events set `agent_id: null`.
+**Why:** consumers never have to special-case missing keys, and run-level events don't have to invent a fake agent.

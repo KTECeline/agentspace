@@ -1,0 +1,6 @@
+{"spec_version":"0.1","id":"x1","type":"agent.status","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"data":{"status":"dancing"}}
+{"spec_version":"0.1","id":"x2","type":"tool.call","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"data":{"call_id":"c1"}}
+{"spec_version":"0.2","id":"x3","type":"message","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"data":{}}
+{"spec_version":"0.1","id":"x4","type":"message","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","team_id":null,"parent_id":null,"data":{}}
+{"spec_version":"0.1","id":"x5","type":"llm.call","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"tokens_in":-5,"data":{}}
+{"spec_version":"0.1","id":"x6","type":"handoff","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"data":{"from_agent_id":"a"}}
