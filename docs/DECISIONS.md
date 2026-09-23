@@ -79,3 +79,10 @@ On Python < 3.11, LangGraph can't propagate callback context into model or tool 
 - The view has a handful of components, so a component library adds weight without payoff yet.
 - One Docker image has to work behind any URL.
 - Brand and visual identity are deferred to Phase 2 (the 3D office), where they matter.
+
+## D-017 · Default ports 4800 (collector) and 4801 (web) (2026-09-24)
+**Decision:** the collector listens on `4800` and the office on `4801`. Both can be overridden (`AGENTSPACE_COLLECTOR_PORT`, `AGENTSPACE_WEB_PORT`).
+**Why:** `3000` is usually taken by the developer's own app (it was on the dev machine). `4317/4318` belong to OTLP, which we'll accept on its standard port later. A pair of adjacent ports is easy to remember.
+
+## D-018 · Docker images: pnpm deploy (collector), Next standalone (web) (2026-09-24)
+**Decision:** both are multi-stage `node:22-slim` images that run as the `node` user. The collector uses `pnpm deploy --prod` plus the tsup bundle. The web image uses Next's `output: "standalone"`. `better-sqlite3`'s install script is skipped (`ignoredBuiltDependencies`) because v13 ships prebuilt binaries, so no Python or compiler is needed. Current sizes are about 400 MB each; slimming them is a Phase 5 task.

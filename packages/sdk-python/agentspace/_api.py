@@ -154,7 +154,7 @@ def handoff(to: str, reason: str | None = None, *, from_agent: str | None = None
         "handoff",
         {"from_agent_id": src, "to_agent_id": slugify(to), "reason": _short(reason)},
         agent_id=src,
-        summary=f"{src} → {slugify(to)}",
+        summary=f"handed off to {to}",
     )
 
 

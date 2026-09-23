@@ -224,7 +224,7 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
                 {"from_agent_id": prev, "to_agent_id": agent_id},
                 agent_id=prev,
                 parent_id=parent.step_id,
-                summary=f"{prev} → {agent_id}",
+                summary=f"handed off to {display}",
             )
         self._emit(
             node,

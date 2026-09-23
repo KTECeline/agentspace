@@ -63,3 +63,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cd packages/sdk-python && uv sync --locked
       - run: make check-generated
+
+  example:
+    name: Example runs with no collector
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/langgraph-dev-team
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      # Nothing listens on :4899, so this proves the SDK never crashes the host app.
+      - run: uv run python main.py --fake --runs 2 --latency 0
+        env:
+          AGENTSPACE_URL: http://127.0.0.1:4899

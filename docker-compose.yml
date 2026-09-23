@@ -1,0 +1,35 @@
+# AgentSpace: collector + web view. SQLite lives in the `agentspace-data` volume.
+name: agentspace
+#   docker compose up        -> office at http://localhost:4801, collector at http://localhost:4800
+services:
+  collector:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: agentspace-collector:dev
+    ports:
+      - "${AGENTSPACE_COLLECTOR_PORT:-4800}:4800"
+    environment:
+      AGENTSPACE_RETENTION_DAYS: ${AGENTSPACE_RETENTION_DAYS:-7}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - agentspace-data:/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: agentspace-web:dev
+    ports:
+      - "${AGENTSPACE_WEB_PORT:-4801}:4801"
+    environment:
+      # The URL the *browser* uses to reach the collector.
+      AGENTSPACE_PUBLIC_URL: ${AGENTSPACE_PUBLIC_URL:-http://localhost:4800}
+    depends_on:
+      collector:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  agentspace-data:
