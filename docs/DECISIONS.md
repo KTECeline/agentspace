@@ -87,7 +87,7 @@ On Python < 3.11, LangGraph can't propagate callback context into model or tool 
 ## D-018 · Docker images: pnpm deploy (collector), Next standalone (web) (2026-09-24)
 **Decision:** both are multi-stage `node:22-slim` images that run as the `node` user. The collector uses `pnpm deploy --prod` plus the tsup bundle. The web image uses Next's `output: "standalone"`. `better-sqlite3`'s install script is skipped (`ignoredBuiltDependencies`) because v13 ships prebuilt binaries, so no Python or compiler is needed. Current sizes are about 400 MB each; slimming them is a Phase 5 task.
 
-## D-019 · Published names: `agentspace-sdk` (PyPI), `@agentspace/sdk` (npm) (2026-09-24)
+## D-019 · Published names: `agentspace-sdk` on both PyPI and npm (2026-09-24)
 PyPI rejected `agentspace` with "too similar to an existing project": it matches `agent-space` once punctuation is removed. npm applies a similar rule, and `agent-space` exists there too. The earlier check (D-001) only looked for exact names.
-**Decision:** keep the AgentSpace brand and the import name `agentspace`. The PyPI distribution is `agentspace-sdk`, the same pattern as `beautifulsoup4` → `bs4`. The npm TypeScript SDK will be scoped as `@agentspace/sdk`, under the npm org `agentspace`, which is where the private workspace packages already live. Placeholders are updated to match.
-**Why:** it's the smallest change: code, docs and the brand stay the same, and a scoped npm name can't clash with similar unscoped names.
+**Decision:** keep the AgentSpace brand and the import name `agentspace`. The PyPI distribution is `agentspace-sdk`, the same pattern as `beautifulsoup4` → `bs4`. The npm TypeScript SDK is **`agentspace-sdk`** too, unscoped. The npm org `agentspace` was already taken, so a scoped `@agentspace/sdk` isn't possible. The private workspace packages (`@agentspace/spec-types`, `/server`, `/web`) are never published, so their scope doesn't matter. Placeholders are updated to match.
+**Why:** it's the smallest change: code, docs and the brand stay the same. And one name on both registries (`pip install agentspace-sdk`, `npm i agentspace-sdk`) is easy to remember.
