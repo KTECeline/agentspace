@@ -1,0 +1,52 @@
+{
+  "name": "agentspace-sdk",
+  "version": "0.1.0-dev.0",
+  "description": "AgentSpace TypeScript SDK: a live office for your AI agent teams.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "agents",
+    "llm",
+    "observability",
+    "multi-agent",
+    "opentelemetry"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KTECeline/agentspace.git",
+    "directory": "packages/sdk-ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@agentspace/spec-types": "workspace:*",
+    "@types/node": "^22.20.4",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

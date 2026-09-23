@@ -131,3 +131,17 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 - Exporters send spans when they *end*: children first, the root last, and often in separate batches. Without holding them, most tool and LLM spans would have no agent.
 - Holding agent spans too would delay every agent until the whole workflow ended.
 - The standard port 4318 isn't exposed yet, to keep the setup to one port. Users set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` instead.
+
+## D-024 · TypeScript SDK shape (2026-09-24)
+**Decision:**
+- It's published as `agentspace-sdk` (the same name as on PyPI), ESM + CJS, with no runtime dependencies.
+- Scopes take callbacks (`run(name, fn)`, `agent(opts, fn)`, `step(name, fn)`) instead of Python-style context managers, and work with both sync and async `fn`.
+- Context uses `AsyncLocalStorage`, found at runtime via `process.getBuiltinModule` (Node ≥ 20) or a global (edge runtimes). If neither exists, it falls back to a sync stack.
+- The transport is a fixed-size ring buffer plus `fetch` with `AbortSignal.timeout`. Timers are `unref`'d, and one `beforeExit` flush runs.
+- Spec types are imported by relative path so the published `.d.ts` is self-contained.
+
+**Why:**
+- Callbacks are the idiomatic TS equivalent of context managers, and they carry async context correctly.
+- A static `node:async_hooks` import would break browser and edge bundling.
+- The private `@agentspace/spec-types` package can't be a dependency of a published package.
+- Verified with `npm pack`: it imports from ESM and CJS and type-checks under strict TS.
