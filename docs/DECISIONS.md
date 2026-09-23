@@ -175,3 +175,15 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 - Hook callbacks always return `{}`: observing must never change what the agent does.
 
 **Honesty note:** the conformance fixture is **synthetic**, built from the SDK's typed hook and message schemas, because capturing a real session needs the Claude Code CLI and an API key. Swap in a real capture once a key is available.
+
+## D-028 · Claude Code hooks: one stateless, silent, fail-open command (2026-09-24)
+**Decision:**
+- `python -m agentspace.claude_code hook` is the command in Claude Code's `hooks` settings. It maps one hook payload to events and sends them with a single POST with a **300 ms timeout**. It keeps no state, prints nothing, and always exits 0.
+- `install` / `uninstall [--user]` merge into or remove from `.claude/settings.json`. They're idempotent and only touch entries containing `agentspace.claude_code`.
+- The project directory name is the team (room); subagents get desks by agent type.
+- Tool summaries contain only a file *name* or subagent type. Prompts, file contents, full paths, search patterns, URLs and commands are never sent.
+
+**Why:**
+- Claude Code runs PreToolUse hooks synchronously before every tool call, so the command must be cheap and must not be able to fail the session.
+- Hook stdout can be fed back into Claude's context, which is why it prints nothing.
+- The installer writes the absolute path of the current Python so the hook works outside any virtualenv.
