@@ -21,11 +21,8 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+# Framework adapters need no extras: they turn on when your app already has the framework.
 models = ["pydantic>=2.5"]
-langgraph = ["langchain-core>=0.3"]
-openai-agents = ["openai-agents>=0.22"]
-crewai = ["crewai>=1.0"]
-claude-agent-sdk = ["claude-agent-sdk>=0.2"]
 
 [project.urls]
 Homepage = "https://github.com/KTECeline/agentspace"
@@ -43,8 +40,13 @@ dev = [
 ]
 # One group per framework adapter, so heavy frameworks never have to co-install.
 openai-agents = ["openai-agents>=0.22"]
-crewai = ["crewai>=1.0"]
+crewai = ["crewai>=1.10; python_version < '3.14'"]
 claude-agent-sdk = ["claude-agent-sdk>=0.2"]
+
+[tool.uv]
+# Framework groups are installed one at a time (one CI job each), so let each resolve to its
+# own newest versions instead of forcing one shared set of transitive pins.
+conflicts = [[{ group = "openai-agents" }, { group = "crewai" }, { group = "claude-agent-sdk" }]]
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -68,8 +70,20 @@ files = ["agentspace"]
 exclude = ["agentspace/models/_generated\\.py"]
 
 [[tool.mypy.overrides]]
-module = ["langchain_core.*", "langgraph.*"]
+# Framework adapters: the frameworks are optional (usually not installed when type checking).
+module = ["langchain_core.*", "langgraph.*", "agents.*", "openai.*", "crewai.*", "claude_agent_sdk.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["numpy.*"]
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+# Adapters subclass framework base classes, which are untyped (skipped) above.
+module = ["agentspace.adapters.*"]
+disallow_subclassing_any = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:crewai.*", "ignore::DeprecationWarning:pydantic.*"]

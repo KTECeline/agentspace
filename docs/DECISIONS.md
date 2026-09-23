@@ -155,3 +155,13 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 - The tests use a scripted `Model` that opens `generation_span`s like the real models.
 
 **Why:** this is the SDK's documented hook, it's live, and it needs no monkey-patching. Separate groups keep heavy frameworks from constraining each other or the core SDK.
+
+## D-026 · CrewAI adapter: event listener, built for out-of-order delivery (2026-09-24)
+**Decision:**
+- A `BaseEventListener` on `crewai_event_bus` (the official extension point), covering crew kickoff, agent execution, LLM call and tool usage events.
+- CrewAI runs sync handlers on a **thread pool**, so the adapter stamps events with CrewAI's own timestamps (via a new `ts=` override on `Client.emit`), processes them under a lock, and ignores agent statuses older than one already applied.
+- Handoffs come from the next agent in a crew, or from the "Delegate work to coworker" / "Ask question to coworker" tools.
+- The framework extras (`agentspace-sdk[crewai]` etc.) are removed; only `[models]` remains. CrewAI pins `openai<3` and the OpenAI Agents SDK needs `openai>=3`, so the extras made the package unresolvable, and adapters only need the framework the app already has.
+- The dependency groups are declared as conflicting, and the CrewAI group has a `python_version < '3.14'` marker, so uv picks current CrewAI (1.15) instead of an old one.
+
+**Why:** the official hook, correct behavior even when handlers race, and each framework tested at its current version.

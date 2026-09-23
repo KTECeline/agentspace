@@ -90,9 +90,14 @@ class Client:
         agent_id: Any = UNSET,
         team_id: Any = UNSET,
         parent_id: Any = UNSET,
+        ts: str | None = None,
         **extra: Any,
     ) -> str | None:
-        """Build one event from the current context and queue it. Returns the event id."""
+        """Build one event from the current context and queue it. Returns the event id.
+
+        ``ts`` overrides the timestamp (RFC 3339), for adapters that receive events late or out
+        of order and know when they really happened.
+        """
         if self.transport is None or self._closed:
             return None
         if agent_id is UNSET or team_id is UNSET:
@@ -112,7 +117,7 @@ class Client:
             "spec_version": SPEC_VERSION,
             "id": event_id,
             "type": type,
-            "ts": now_iso(),
+            "ts": ts or now_iso(),
             "workspace": self.config.workspace,
             "run_id": rid,
             "agent_id": agent_id,
