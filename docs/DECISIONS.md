@@ -42,3 +42,15 @@ The brief lists `step` as an entity but has no event type for it.
 ## D-010 · `agent_id`, `team_id`, `parent_id` are required-but-nullable (2026-09-23)
 **Decision:** every event carries the keys (as the brief says). Run-level events set `agent_id: null`.
 **Why:** consumers never have to special-case missing keys, and run-level events don't have to invent a fake agent.
+
+## D-011 · Transport: bounded deque + one daemon thread, keep newest (2026-09-24)
+**Decision:** `emit()` appends to a `deque(maxlen=10_000)`, which is O(1) and needs no lock on the hot path. A daemon thread sends batches (≤100 events, every 200 ms, or sooner once 100 are queued). When the collector is unreachable, failed batches go back in the queue. When the queue is full, the **oldest** events are dropped, with a rate-limited warning. Retries back off exponentially up to 10 s. `flush()` and `shutdown()` return right away if the collector is known to be down. HTTP 4xx (other than 429) drops the batch and doesn't retry.
+**Why:** a live office cares most about recent events. Short outages lose nothing, and long outages have bounded memory. None of this can block or raise in the host. It's covered by `tests/test_reliability.py`: p99 `emit` < 2 ms with the collector down, and an asyncio loop that doesn't stall when the collector hangs.
+
+## D-012 · LangGraph adapter: official callbacks, registered globally via `register_configure_hook` (2026-09-24)
+**Decision:** `AgentSpaceCallbackHandler(BaseCallbackHandler)`. `init()` registers it with `langchain_core.tracers.context.register_configure_hook`, which is the public hook LangSmith uses, using a `ContextVar` whose default is the handler, so it's active in every thread and task. Graph node = agent, detected as a chain whose `name == metadata["langgraph_node"]`. A handoff is recorded when consecutive nodes differ. The team comes from `config.metadata.agentspace_team`, falling back to the graph's name. `run_inline = True` keeps event order, which is safe because the handler only enqueues.
+**Why:** it's the "two lines of code" goal (`import agentspace; agentspace.init()`) with no monkey-patching. It was checked against langchain-core 1.6.4 / langgraph 1.2.12, and the event sequence is pinned by a golden fixture.
+
+## D-013 · Known limitation: Python 3.10 + async LangGraph (2026-09-24)
+On Python < 3.11, LangGraph can't propagate callback context into model or tool calls made inside nodes run with `ainvoke`, unless the node passes `config` on. This is a documented LangGraph limitation.
+**Decision:** document it; don't work around it. On 3.10 async, node, agent and handoff events still work. The test asserts exactly that.
