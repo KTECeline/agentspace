@@ -1,35 +1,95 @@
 import type { AgentState, RunState, StoredEvent, WsServerMessage } from "@agentspace/spec-types";
 
 export const MAX_EVENTS = 500;
+export const MAX_AGENT_EVENTS = 200;
+export const MAX_HANDOFFS = 50;
 
 export interface OfficeState {
   agents: Record<string, AgentState>;
   runs: Record<string, RunState>;
   /** Oldest first, capped at MAX_EVENTS. */
   events: StoredEvent[];
+  /** Per-agent history for the agent panel (oldest first, capped). */
+  agentEvents: Record<string, StoredEvent[]>;
+  /** Order in which agents first appeared; the office layout depends only on this, so desks never move. */
+  firstSeen: Record<string, number>;
+  /** Recent handoffs, for the packet animation. */
+  handoffs: StoredEvent[];
   ready: boolean;
 }
 
-export const emptyState: OfficeState = { agents: {}, runs: {}, events: [], ready: false };
+export const emptyState: OfficeState = {
+  agents: {},
+  runs: {},
+  events: [],
+  agentEvents: {},
+  firstSeen: {},
+  handoffs: [],
+  ready: false,
+};
+
+function cap<T>(list: T[], max: number): T[] {
+  return list.length > max ? list.slice(-max) : list;
+}
+
+function withFirstSeen(firstSeen: Record<string, number>, ids: string[]): Record<string, number> {
+  let out = firstSeen;
+  let next = Object.keys(firstSeen).length;
+  for (const id of ids) {
+    if (out[id] === undefined) {
+      if (out === firstSeen) out = { ...firstSeen };
+      out[id] = next++;
+    }
+  }
+  return out;
+}
+
+function appendAgentEvents(agentEvents: Record<string, StoredEvent[]>, events: StoredEvent[]): Record<string, StoredEvent[]> {
+  const out = { ...agentEvents };
+  for (const e of events) {
+    for (const id of relatedAgents(e)) out[id] = cap([...(out[id] ?? []), e], MAX_AGENT_EVENTS);
+  }
+  return out;
+}
+
+/** Agents an event belongs to (a handoff belongs to both ends). */
+export function relatedAgents(e: StoredEvent): string[] {
+  if (e.type === "handoff") return [...new Set([e.data.from_agent_id, e.data.to_agent_id])];
+  return e.agent_id ? [e.agent_id] : [];
+}
 
 export function reduce(state: OfficeState, msg: WsServerMessage): OfficeState {
   switch (msg.type) {
-    case "snapshot":
+    case "snapshot": {
+      const events = cap(msg.events, MAX_EVENTS);
       return {
         agents: Object.fromEntries(msg.agents.map((a) => [a.agent_id, a])),
         runs: Object.fromEntries(msg.runs.map((r) => [r.run_id, r])),
-        events: msg.events.slice(-MAX_EVENTS),
+        events,
+        agentEvents: appendAgentEvents({}, events),
+        firstSeen: withFirstSeen({}, msg.agents.map((a) => a.agent_id)),
+        handoffs: [],
         ready: true,
       };
+    }
     case "events": {
       const lastSeq = state.events.at(-1)?.seq ?? 0;
       const fresh = msg.events.filter((e) => e.seq > lastSeq);
       if (!fresh.length) return state;
-      const events = state.events.concat(fresh);
-      return { ...state, events: events.length > MAX_EVENTS ? events.slice(-MAX_EVENTS) : events };
+      const handoffs = fresh.filter((e) => e.type === "handoff");
+      return {
+        ...state,
+        events: cap(state.events.concat(fresh), MAX_EVENTS),
+        agentEvents: appendAgentEvents(state.agentEvents, fresh),
+        handoffs: handoffs.length ? cap(state.handoffs.concat(handoffs), MAX_HANDOFFS) : state.handoffs,
+      };
     }
     case "agents":
-      return { ...state, agents: { ...state.agents, ...Object.fromEntries(msg.agents.map((a) => [a.agent_id, a])) } };
+      return {
+        ...state,
+        agents: { ...state.agents, ...Object.fromEntries(msg.agents.map((a) => [a.agent_id, a])) },
+        firstSeen: withFirstSeen(state.firstSeen, msg.agents.map((a) => a.agent_id)),
+      };
     case "runs":
       return { ...state, runs: { ...state.runs, ...Object.fromEntries(msg.runs.map((r) => [r.run_id, r])) } };
   }
@@ -40,7 +100,7 @@ export interface Team {
   agents: AgentState[];
 }
 
-/** Group agents by team for the office layout. Unassigned agents go last. */
+/** Group agents by team for the 2D grid. Unassigned agents go last. */
 export function groupByTeam(agents: AgentState[]): Team[] {
   const teams = new Map<string, AgentState[]>();
   for (const a of agents) {

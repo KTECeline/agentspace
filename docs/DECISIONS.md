@@ -91,3 +91,18 @@ On Python < 3.11, LangGraph can't propagate callback context into model or tool 
 PyPI rejected `agentspace` with "too similar to an existing project": it matches `agent-space` once punctuation is removed. npm applies a similar rule, and `agent-space` exists there too. The earlier check (D-001) only looked for exact names.
 **Decision:** keep the AgentSpace brand and the import name `agentspace`. The PyPI distribution is `agentspace-sdk`, the same pattern as `beautifulsoup4` → `bs4`. The npm TypeScript SDK is **`agentspace-sdk`** too, unscoped. The npm org `agentspace` was already taken, so a scoped `@agentspace/sdk` isn't possible. The private workspace packages (`@agentspace/spec-types`, `/server`, `/web`) are never published, so their scope doesn't matter. Placeholders are updated to match.
 **Why:** it's the smallest change: code, docs and the brand stay the same. And one name on both registries (`pip install agentspace-sdk`, `npm i agentspace-sdk`) is easy to remember.
+
+## D-020 · Web data layer: zustand store, frame-batched, pluggable sources (2026-09-24)
+**Decision:**
+- Office state lives in a `zustand` store fed by a pure reducer (`lib/state.ts`).
+- Sources (`live` WebSocket, `recorded` file playback, `stress` generator) push collector-shaped messages into a queue. The queue is applied at most once per animation frame, or every 100 ms in hidden tabs.
+- Recordings and stress runs are turned into collector messages by a client-side `Projector`. It must match the collector's SQL projections exactly: both sides are tested against `spec/v0.1/examples/projection.expected.json`.
+
+**Why:**
+- The 3D scene needs per-object subscriptions, so an agent's avatar re-renders only when that agent changes.
+- 100 events/s must not mean 100 React renders/s.
+- The public demo (Phase 5) has to run on static hosting with no collector, and still look exactly like a live run.
+
+## D-021 · Brand: cozy low-poly office (style A) (2026-09-24)
+**Decision:** a warm cream and pastel palette with a terracotta accent, and warm dark mode as "the office after hours". Fredoka is the display face; Geist is used for the UI. Documented in `brand.md`. All token pairs are checked to be ≥ 4.5:1 in both themes.
+**Why:** chosen by the maintainer. It stands out from dark "mission control" AI tools and reads well in a README GIF.

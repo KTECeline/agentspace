@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { Office } from "@/components/Office";
+import { OfficeApp } from "@/components/OfficeApp";
 
 /**
  * The collector URL is read at request time (not NEXT_PUBLIC_*, which is frozen at build time),
@@ -11,5 +11,5 @@ export default async function Page({ searchParams }: PageProps<"/">) {
   const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const collectorUrl = pick(params.collector) ?? process.env.AGENTSPACE_PUBLIC_URL ?? "http://localhost:4800";
   const workspace = pick(params.workspace) ?? process.env.AGENTSPACE_WORKSPACE ?? "default";
-  return <Office collectorUrl={collectorUrl} workspace={workspace} />;
+  return <OfficeApp source={{ kind: "live", collectorUrl, workspace }} />;
 }

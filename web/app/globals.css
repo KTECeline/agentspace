@@ -5,70 +5,74 @@
  * Status colors are chosen for >= 4.5:1 contrast of the `-fg` text on the `-bg` chip.
  */
 :root {
-  --background: oklch(0.985 0.002 250);
-  --surface: oklch(1 0 0);
-  --surface-2: oklch(0.965 0.004 250);
-  --foreground: oklch(0.21 0.01 260);
-  --muted: oklch(0.47 0.012 260);
-  --border: oklch(0.91 0.006 255);
-  --ring: oklch(0.55 0.17 262);
-  --accent: oklch(0.52 0.19 262);
+  /* Cozy low-poly office: warm cream paper, charcoal ink, terracotta accent (see brand.md). */
+  --background: oklch(0.972 0.014 85);
+  --surface: oklch(0.993 0.006 85);
+  --surface-2: oklch(0.948 0.018 80);
+  --foreground: oklch(0.28 0.022 50);
+  --muted: oklch(0.5 0.025 55);
+  --border: oklch(0.89 0.02 75);
+  --ring: oklch(0.56 0.14 38);
+  --accent: oklch(0.55 0.14 38);
+  --accent-foreground: oklch(0.985 0.01 85);
 
-  --st-idle-bg: oklch(0.95 0.005 255);
-  --st-idle-fg: oklch(0.42 0.015 260);
-  --st-idle-dot: oklch(0.7 0.01 260);
-  --st-thinking-bg: oklch(0.94 0.04 255);
-  --st-thinking-fg: oklch(0.42 0.16 262);
-  --st-thinking-dot: oklch(0.6 0.19 262);
-  --st-tool-bg: oklch(0.95 0.06 85);
-  --st-tool-fg: oklch(0.45 0.11 65);
-  --st-tool-dot: oklch(0.75 0.16 75);
-  --st-wait-bg: oklch(0.95 0.01 255);
-  --st-wait-fg: oklch(0.45 0.03 255);
-  --st-wait-dot: oklch(0.65 0.05 255);
-  --st-human-bg: oklch(0.94 0.05 305);
-  --st-human-fg: oklch(0.45 0.18 305);
-  --st-human-dot: oklch(0.62 0.22 305);
-  --st-done-bg: oklch(0.95 0.05 155);
-  --st-done-fg: oklch(0.42 0.11 155);
-  --st-done-dot: oklch(0.65 0.15 155);
-  --st-error-bg: oklch(0.95 0.035 25);
-  --st-error-fg: oklch(0.48 0.18 27);
-  --st-error-dot: oklch(0.62 0.21 27);
+  --st-idle-bg: oklch(0.93 0.015 75);
+  --st-idle-fg: oklch(0.42 0.025 55);
+  --st-idle-dot: oklch(0.7 0.025 60);
+  --st-thinking-bg: oklch(0.93 0.045 260);
+  --st-thinking-fg: oklch(0.42 0.13 265);
+  --st-thinking-dot: oklch(0.64 0.14 265);
+  --st-tool-bg: oklch(0.94 0.07 88);
+  --st-tool-fg: oklch(0.44 0.1 65);
+  --st-tool-dot: oklch(0.78 0.15 80);
+  --st-wait-bg: oklch(0.93 0.015 230);
+  --st-wait-fg: oklch(0.44 0.035 235);
+  --st-wait-dot: oklch(0.68 0.05 235);
+  --st-human-bg: oklch(0.93 0.055 310);
+  --st-human-fg: oklch(0.44 0.16 310);
+  --st-human-dot: oklch(0.65 0.19 310);
+  --st-done-bg: oklch(0.93 0.055 150);
+  --st-done-fg: oklch(0.41 0.1 150);
+  --st-done-dot: oklch(0.68 0.13 150);
+  --st-error-bg: oklch(0.93 0.045 28);
+  --st-error-fg: oklch(0.47 0.16 28);
+  --st-error-dot: oklch(0.64 0.19 28);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.16 0.008 260);
-    --surface: oklch(0.2 0.009 260);
-    --surface-2: oklch(0.24 0.01 260);
-    --foreground: oklch(0.95 0.004 260);
-    --muted: oklch(0.72 0.012 260);
-    --border: oklch(0.3 0.012 260);
-    --ring: oklch(0.7 0.15 262);
-    --accent: oklch(0.72 0.15 262);
+    /* Same office after hours: warm night, lamp-lit accents. */
+    --background: oklch(0.2 0.015 55);
+    --surface: oklch(0.24 0.016 55);
+    --surface-2: oklch(0.28 0.018 55);
+    --foreground: oklch(0.95 0.012 80);
+    --muted: oklch(0.75 0.02 70);
+    --border: oklch(0.34 0.02 55);
+    --ring: oklch(0.76 0.12 50);
+    --accent: oklch(0.76 0.12 50);
+    --accent-foreground: oklch(0.2 0.015 55);
 
-    --st-idle-bg: oklch(0.27 0.01 260);
-    --st-idle-fg: oklch(0.8 0.01 260);
-    --st-idle-dot: oklch(0.6 0.01 260);
-    --st-thinking-bg: oklch(0.3 0.07 262);
-    --st-thinking-fg: oklch(0.86 0.08 262);
-    --st-thinking-dot: oklch(0.7 0.17 262);
-    --st-tool-bg: oklch(0.32 0.06 75);
-    --st-tool-fg: oklch(0.88 0.1 85);
-    --st-tool-dot: oklch(0.8 0.15 80);
-    --st-wait-bg: oklch(0.28 0.02 255);
-    --st-wait-fg: oklch(0.82 0.03 255);
-    --st-wait-dot: oklch(0.65 0.04 255);
-    --st-human-bg: oklch(0.32 0.09 305);
-    --st-human-fg: oklch(0.87 0.09 305);
-    --st-human-dot: oklch(0.72 0.2 305);
-    --st-done-bg: oklch(0.3 0.06 155);
-    --st-done-fg: oklch(0.86 0.1 155);
-    --st-done-dot: oklch(0.72 0.15 155);
-    --st-error-bg: oklch(0.32 0.08 25);
-    --st-error-fg: oklch(0.87 0.08 25);
-    --st-error-dot: oklch(0.7 0.19 27);
+    --st-idle-bg: oklch(0.3 0.015 60);
+    --st-idle-fg: oklch(0.85 0.015 70);
+    --st-idle-dot: oklch(0.62 0.02 60);
+    --st-thinking-bg: oklch(0.32 0.06 265);
+    --st-thinking-fg: oklch(0.87 0.07 265);
+    --st-thinking-dot: oklch(0.72 0.13 265);
+    --st-tool-bg: oklch(0.34 0.06 75);
+    --st-tool-fg: oklch(0.9 0.09 88);
+    --st-tool-dot: oklch(0.82 0.14 82);
+    --st-wait-bg: oklch(0.3 0.02 235);
+    --st-wait-fg: oklch(0.84 0.03 235);
+    --st-wait-dot: oklch(0.66 0.04 235);
+    --st-human-bg: oklch(0.33 0.08 310);
+    --st-human-fg: oklch(0.88 0.08 310);
+    --st-human-dot: oklch(0.74 0.17 310);
+    --st-done-bg: oklch(0.31 0.05 150);
+    --st-done-fg: oklch(0.87 0.08 150);
+    --st-done-dot: oklch(0.74 0.12 150);
+    --st-error-bg: oklch(0.33 0.07 28);
+    --st-error-fg: oklch(0.88 0.07 28);
+    --st-error-dot: oklch(0.7 0.17 28);
   }
 }
 
@@ -81,8 +85,10 @@
   --color-border: var(--border);
   --color-ring: var(--ring);
   --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fredoka);
 }
 
 body {

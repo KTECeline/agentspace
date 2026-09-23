@@ -1,0 +1,87 @@
+{
+ "default": {
+  "agents": [
+   {
+    "workspace": "default",
+    "agent_id": "engineer",
+    "team_id": "engineering",
+    "name": "Engineer",
+    "role": null,
+    "framework": "langgraph",
+    "status": "done",
+    "status_detail": null,
+    "last_summary": "Patched the off-by-one",
+    "last_event_at": "2026-09-23T10:00:31Z",
+    "current_run_id": "r1",
+    "tokens_in": 3070,
+    "tokens_out": 177,
+    "cost_usd": 0,
+    "model": "scripted-fake"
+   },
+   {
+    "workspace": "default",
+    "agent_id": "manager",
+    "team_id": "engineering",
+    "name": "Manager",
+    "role": "Plans and delegates",
+    "framework": "langgraph",
+    "status": "thinking",
+    "status_detail": null,
+    "last_summary": "Decided to route to triage",
+    "last_event_at": "2026-09-23T10:00:01.200Z",
+    "current_run_id": "r1",
+    "tokens_in": 1552,
+    "tokens_out": 103,
+    "cost_usd": 0.0039,
+    "model": "claude-sonnet-5"
+   },
+   {
+    "workspace": "default",
+    "agent_id": "triage",
+    "team_id": "engineering",
+    "name": "Triage",
+    "role": null,
+    "framework": "langgraph",
+    "status": "done",
+    "status_detail": null,
+    "last_summary": "handed off to Manager",
+    "last_event_at": "2026-09-23T16:44:59.949Z",
+    "current_run_id": "01a0cf27dc3d72f38c402e359284a837",
+    "tokens_in": 1770,
+    "tokens_out": 104,
+    "cost_usd": 0,
+    "model": "scripted-fake"
+   }
+  ],
+  "runs": [
+   {
+    "workspace": "default",
+    "run_id": "01a0cf27dc3d72f38c402e359284a837",
+    "name": "dev-team",
+    "framework": "langgraph",
+    "status": "ok",
+    "started_at": "2026-09-23T16:44:51.133Z",
+    "finished_at": "2026-09-23T16:44:59.950Z",
+    "duration_ms": 8815.9,
+    "event_count": 57,
+    "tokens_in": 5580,
+    "tokens_out": 289,
+    "cost_usd": 0
+   },
+   {
+    "workspace": "default",
+    "run_id": "r1",
+    "name": "dev-team",
+    "framework": "langgraph",
+    "status": "ok",
+    "started_at": "2026-09-23T10:00:00Z",
+    "finished_at": "2026-09-23T10:00:40Z",
+    "duration_ms": 40000,
+    "event_count": 14,
+    "tokens_in": 812,
+    "tokens_out": 95,
+    "cost_usd": 0.0039
+   }
+  ]
+ }
+}
