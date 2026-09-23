@@ -165,3 +165,13 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 - The dependency groups are declared as conflicting, and the CrewAI group has a `python_version < '3.14'` marker, so uv picks current CrewAI (1.15) instead of an old one.
 
 **Why:** the official hook, correct behavior even when handlers race, and each framework tested at its current version.
+
+## D-027 · Claude Agent SDK adapter: opt-in hooks + stream tracker (2026-09-24)
+**Decision:**
+- The Claude Agent SDK has no global registry. Its extension point is `ClaudeAgentOptions(hooks=...)`, which is per session.
+- So the adapter is opt-in: `instrument_options(options, name=, team=)` merges our hooks after the user's, without mutating their options, and `track(stream)` wraps the message iterator to get model and token usage per assistant message.
+- The session's real billed cost comes from `ResultMessage.total_cost_usd`. It's attached as one `llm.call` that carries only `cost_usd`, so run and agent cost totals are right without double-counting tokens.
+- Subagents (Task/Agent tool, `SubagentStart`) get a desk per agent type, plus a handoff. `PermissionRequest` and permission notifications become `waiting_human`.
+- Hook callbacks always return `{}`: observing must never change what the agent does.
+
+**Honesty note:** the conformance fixture is **synthetic**, built from the SDK's typed hook and message schemas, because capturing a real session needs the Claude Code CLI and an API key. Swap in a real capture once a key is available.

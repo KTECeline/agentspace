@@ -43,6 +43,8 @@ jobs:
             tests: tests/test_openai_agents_adapter.py
           - group: crewai
             tests: tests/test_crewai_adapter.py
+          - group: claude-agent-sdk
+            tests: tests/test_claude_agent_sdk_adapter.py
     defaults:
       run:
         working-directory: packages/sdk-python
