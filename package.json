@@ -1,0 +1,12 @@
+{
+  "name": "agentspace-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.13.1",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "gen-types": "pnpm --filter @agentspace/spec-types gen",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}

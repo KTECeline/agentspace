@@ -1,0 +1,4 @@
+packages:
+  - packages/spec-types
+  - server
+  - web
