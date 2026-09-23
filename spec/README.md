@@ -22,6 +22,10 @@ Every event has the envelope fields: `spec_version`, `id`, `type`, `ts`, `worksp
 
 Collectors ingest batches as `POST /v1/events` with `{"events": [...]}`, up to 1000 per batch.
 
+- The collector validates each event on its own. Valid events in a batch are stored even if others are rejected, and the response says `{accepted, duplicates, rejected, errors}`.
+- Event `id`s are de-duplicated per workspace, so SDK retries are safe.
+- **Totals rule:** per-agent and per-run `tokens_in`, `tokens_out` and `cost_usd` are summed over **`llm.call` events only**. Other events may carry those fields for display, but they aren't added again.
+
 ## Privacy
 
 `summary` is always safe to display. Full content (`data.input`, `data.output`, `data.arguments`, `data.result`, `data.text`, `data.payload`) is only sent when the SDK runs with `capture_content=True`, and it goes through the redaction hook first.

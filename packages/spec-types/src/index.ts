@@ -43,3 +43,5 @@ export type EventOf<T extends EventType> = Extract<AgentSpaceEvent, { type: T }>
 type Exhaustive<T extends true> = T;
 export type _EventTypesComplete = Exhaustive<Exclude<EventType, (typeof EVENT_TYPES)[number]> extends never ? true : false>;
 export type _StatusesComplete = Exhaustive<Exclude<AgentStatus, (typeof AGENT_STATUSES)[number]> extends never ? true : false>;
+
+export type * from "./api.ts";

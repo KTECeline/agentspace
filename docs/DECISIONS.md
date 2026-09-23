@@ -54,3 +54,21 @@ The brief lists `step` as an entity but has no event type for it.
 ## D-013 · Known limitation: Python 3.10 + async LangGraph (2026-09-24)
 On Python < 3.11, LangGraph can't propagate callback context into model or tool calls made inside nodes run with `ainvoke`, unless the node passes `config` on. This is a documented LangGraph limitation.
 **Decision:** document it; don't work around it. On 3.10 async, node, agent and handoff events still work. The test asserts exactly that.
+
+## D-014 · Collector storage: better-sqlite3, event log + projections in one transaction (2026-09-24)
+**Decision:**
+- `better-sqlite3` in WAL mode. The `events` table is an append-only log, and `seq` gives arrival order for live views and pagination.
+- `agents` and `runs` projections are updated in the same transaction as each insert.
+- Validation is per event with Ajv against the shared schema, so partial acceptance works.
+- `(workspace, id)` is unique for idempotent retries.
+- Retention (`AGENTSPACE_RETENTION_DAYS`, default 7) deletes old events and finished runs but keeps agents.
+
+**Why:**
+- It's synchronous and very fast for this write pattern.
+- better-sqlite3 v13 ships prebuilt binaries for linux, macOS and Windows (glibc and musl), so there's no compiler in Docker.
+- Projections make the snapshot sent to new browsers O(agents), not O(events).
+- `node:sqlite` is still experimental on Node 22.
+
+## D-015 · WebSocket protocol: snapshot then deltas (2026-09-24)
+**Decision:** `GET /v1/ws?workspace=` sends one `snapshot` (agents, the 50 most recent runs, the last 200 events), then `events`, `agents` and `runs` deltas after each ingest. Clients with more than 8 MB of buffered data are skipped rather than buffered for.
+**Why:** a browser can join mid-run and render at once. Sending the updated projection rows means the web app doesn't have to re-derive state from events.

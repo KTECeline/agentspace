@@ -11,11 +11,11 @@
   "scripts": {
     "gen": "node scripts/gen.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "echo 'no tests (generated package)'"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^15.0.4",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   }
 }
