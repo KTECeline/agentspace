@@ -59,7 +59,8 @@ export function LabelLayer({ layout, anchors, showNames, teamCounts }: { layout:
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       {layout.rooms.map((room) => (
-        <div key={room.key} ref={register(`room:${room.key}`, [room.x, 1.05, room.z - room.depth / 2 + 0.1])} className="absolute left-0 top-0 will-change-transform">
+        // Name plate on the front edge of the rug: speech bubbles float above heads, so they never cover it.
+        <div key={room.key} ref={register(`room:${room.key}`, [room.x, 0.05, room.z + room.depth / 2 - 0.15])} className="absolute left-0 top-0 pt-7 will-change-transform">
           <div className="whitespace-nowrap rounded-full border border-border bg-surface/90 px-3 py-1 font-display text-sm font-semibold text-foreground shadow-sm">
             {teamLabel(room.teamId) + (room.part ? ` ${room.part + 1}` : "")}{" "}
             <span className="font-sans text-xs font-normal text-muted">· {teamCounts[room.key] ?? 0}</span>

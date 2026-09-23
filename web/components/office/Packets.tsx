@@ -5,27 +5,10 @@ import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 import type { Desk } from "@/lib/layout";
 import { useOffice } from "@/lib/store";
+import { arcPoint, type Flight } from "./arc";
 
 const POOL = 24;
 const TRAIL = 3;
-
-interface Flight {
-  from: [number, number, number];
-  to: [number, number, number];
-  start: number;
-  duration: number;
-  height: number;
-}
-
-/** Position along a parabolic arc at progress u in [0, 1] (ease-in-out). */
-export function arcPoint(f: Flight, u: number): [number, number, number] {
-  const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
-  return [
-    f.from[0] + (f.to[0] - f.from[0]) * e,
-    f.from[1] + (f.to[1] - f.from[1]) * e + Math.sin(Math.PI * e) * f.height,
-    f.from[2] + (f.to[2] - f.from[2]) * e,
-  ];
-}
 
 /**
  * Handoff packets: a glowing parcel flies in an arc from one desk to the other.

@@ -7,10 +7,10 @@
  * because people learn where "their" agents sit.
  */
 
-export const DESKS_PER_ROOM = 8;
+export const DESKS_PER_ROOM = 6;
 export const ROOM_COLUMNS = 3;
-export const ROOM_W = 9;
-export const ROOM_D = 7;
+export const ROOM_W = 7.2;
+export const ROOM_D = 5.4;
 export const ROOM_GAP = 1.5;
 const DESK_PITCH_X = 2;
 const DESK_OFFSET_Z = 1.1;

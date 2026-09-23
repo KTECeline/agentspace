@@ -79,7 +79,7 @@ export default function OfficeScene({ showFps = false }: { showFps?: boolean }) 
   }, [layout]);
 
   return (
-    <div className="relative h-full min-h-[420px] w-full overflow-hidden rounded-xl border border-border" style={{ background: palette.background }}>
+    <div className="relative h-full min-h-[420px] w-full overflow-hidden rounded-xl border border-border" style={{ background: palette.floor }}>
       <Canvas
         orthographic
         dpr={[1, 2]}
@@ -128,9 +128,9 @@ export default function OfficeScene({ showFps = false }: { showFps?: boolean }) 
 
 function Floor({ layout, color }: { layout: OfficeLayout; color: string }) {
   const { minX, maxX, minZ, maxZ } = layout.bounds;
-  const pad = 6;
+  const pad = 60; // reaches past the screen edge at any sensible zoom
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(minX + maxX) / 2, 0, (minZ + maxZ) / 2]}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(minX + maxX) / 2, -0.01, (minZ + maxZ) / 2]}>
       <planeGeometry args={[maxX - minX + pad * 2, maxZ - minZ + pad * 2]} />
       <meshStandardMaterial color={color} roughness={1} />
     </mesh>

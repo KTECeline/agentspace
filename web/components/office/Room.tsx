@@ -36,7 +36,8 @@ export const Room = memo(function Room({ room, palette, dark }: Props) {
         <boxGeometry args={[0.16, wallH, d]} />
         <meshStandardMaterial color={palette.wall} flatShading />
       </mesh>
-      <Plant position={[-w / 2 + 0.55, 0, -d / 2 + 0.55]} palette={palette} />
+      {/* back-left would sit behind the first agent's head in the isometric view, so use front-left */}
+      <Plant position={[-w / 2 + 0.5, 0, d / 2 - 0.5]} palette={palette} />
       <Plant position={[w / 2 - 0.55, 0, -d / 2 + 0.55]} palette={palette} small />
     </group>
   );
