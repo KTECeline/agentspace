@@ -2,9 +2,9 @@
 
 **A live office for your AI agent teams.** Add two lines to your multi-agent app and watch every agent work: who is thinking, which tool is running, who handed off to whom, and what it cost.
 
-![AgentSpace 2D office view: three LangGraph agents, live statuses, and an event log](docs/assets/office-2d.jpg)
+![AgentSpace: a LangGraph dev team (Manager, Triage, Engineer) at their desks in a cozy isometric office, with a live event log](docs/assets/office-3d.jpg)
 
-> 🚧 **Early development: Phase 1 of 5.** Working today: the event spec, the Python SDK with the LangGraph adapter, the collector, and a live 2D view. Coming next: the 3D office. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 **Early development: Phase 2 of 5.** Working today: the event spec, the Python SDK with the LangGraph adapter, the collector, and the live 3D office (plus a 2D view). Next: more adapters, OTLP ingest, and a TypeScript SDK. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quickstart
 
@@ -21,16 +21,17 @@ import agentspace
 agentspace.init()                    # LangGraph graphs are picked up automatically
 ```
 
-Want to see it without writing any code? Run the example team. It needs no API key:
+Want to see it without writing any code?
 
-```bash
-cd examples/langgraph-dev-team && uv run python main.py --fake --runs 0
-```
+- **Recorded demo:** open http://localhost:4801/demo. It replays a real run and needs no collector and no API key.
+- **Live example team** (no API key): `cd examples/langgraph-dev-team && uv run python main.py --fake --runs 0`
 
 ## What you get
 
-- **Live status for every agent**: thinking, using a tool, waiting on a human, done, or failed. Agents are grouped into teams automatically.
+- **A live 3D office.** Each team gets its own room, laid out automatically; desks never move when new agents join. Every agent is a little bean at a desk that animates by status (thinking, typing at a tool, waiting, done, failed). An agent that needs a human glows, and handoffs fly between desks as glowing packets.
+- **An agent panel.** Click any agent to see its current step, its tool calls (with durations and failures), tokens, cost, model, and its own live log.
 - **Handoffs, tool calls and model calls** in a filterable event log, with token counts and model names.
+- **A 2D view** for low-power machines or screen readers. Toggle it in the header; it's used automatically when WebGL isn't available.
 - **Run totals**: duration, tokens, cost, and event count.
 - **Zero config for LangGraph.** Each graph node becomes an agent. This uses LangChain's official callback hook; nothing is monkey-patched.
 - **Manual API for everything else**: `@agentspace.agent`, `agentspace.step()`, `agentspace.emit()`.
@@ -51,7 +52,9 @@ cd examples/langgraph-dev-team && uv run python main.py --fake --runs 0
 - **[Event spec](spec/README.md)** (JSON Schema, v0.1) is the single source of truth. The Python (pydantic) and TypeScript types are generated from it, and it maps to the [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/semantic-conventions-genai).
 - **[Python SDK](packages/sdk-python)** (`pip install agentspace-sdk`, `import agentspace`) has zero runtime dependencies and supports Python 3.10+.
 - **[Collector](server)** validates every event against the schema, de-duplicates retries, stores events in SQLite, and streams them to browsers.
-- **[Web](web)**: Next.js with Tailwind. The 2D view is the debug and low-power view; the 3D office comes in Phase 2.
+- **[Web](web)**: Next.js, Tailwind, and react-three-fiber. Furniture is instanced and labels are one DOM layer, so **50 agents at 100 events/s run at about 60 fps** (production build, MacBook Air; try `/demo?stress=50`).
+
+![50 agents in 8 teams under synthetic load, 60 fps](docs/assets/office-stress-50.jpg)
 
 ## Python API
 
@@ -89,7 +92,8 @@ make dev            # collector (:4800) + web (:4801) with hot reload
 make test           # pytest + vitest
 make lint typecheck # ruff, mypy, eslint, tsc
 make gen-types      # regenerate TS + Python types after editing spec/
-make demo-check     # compose up, run example, kill collector mid-run, expect exit 0
+make demo-check     # compose up, check /demo, run example live, kill collector mid-run, expect exit 0
+make record         # save the latest finished run as the /demo recording
 ```
 
 Repo layout: `spec/` (event schema) · `packages/sdk-python` · `packages/spec-types` (generated TS types) · `server/` (collector) · `web/` (office) · `examples/` · `docs/` (brief, progress, decisions).
@@ -97,7 +101,7 @@ Repo layout: `spec/` (event schema) · `packages/sdk-python` · `packages/spec-t
 ## Roadmap
 
 1. ✅ Spec, Python SDK, LangGraph adapter, collector, 2D view
-2. 3D office (react-three-fiber): auto-layout, avatars, handoff animations, agent panel, recorded demo
+2. ✅ 3D office (react-three-fiber): auto-layout, avatars, handoff animations, agent panel, recorded demo
 3. Adapters for the Claude Agent SDK, CrewAI, the OpenAI Agents SDK and Claude Code hooks; OTLP ingest; TypeScript SDK
 4. Human approvals from the office, pause/cancel, replay timeline, cost dashboard, Postgres, auth
 5. Published overhead benchmarks, releases to PyPI and npm, docs site, public demo
