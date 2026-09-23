@@ -32,6 +32,29 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest -q
 
+  adapters:
+    name: Adapter ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: openai-agents
+            tests: tests/test_openai_agents_adapter.py
+    defaults:
+      run:
+        working-directory: packages/sdk-python
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --group ${{ matrix.group }}
+      # The adapter's own conformance tests, plus the whole suite with that framework installed.
+      - run: uv run pytest -q ${{ matrix.tests }}
+      - run: uv run pytest -q
+
   typescript:
     name: TypeScript
     runs-on: ubuntu-latest

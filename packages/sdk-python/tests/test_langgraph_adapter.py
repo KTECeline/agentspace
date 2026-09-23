@@ -45,7 +45,7 @@ def test_auto_instrumented_graph_matches_golden(
     collector: FakeCollector, validator: Draft202012Validator
 ) -> None:
     init_fast(collector.url)  # auto_instrument=True: no callbacks passed below
-    assert agentspace.get_client().config.adapters == ["langgraph"]  # type: ignore[union-attr]
+    assert "langgraph" in agentspace.get_client().config.adapters  # type: ignore[union-attr]
     events = run_graph(collector, config={"metadata": {"agentspace_team": "Engineering"}})
     assert_valid_events(validator, events)
 

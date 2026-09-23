@@ -145,3 +145,13 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 - A static `node:async_hooks` import would break browser and edge bundling.
 - The private `@agentspace/spec-types` package can't be a dependency of a published package.
 - Verified with `npm pack`: it imports from ESM and CJS and type-checks under strict TS.
+
+## D-025 · OpenAI Agents SDK adapter: TracingProcessor (2026-09-24)
+**Decision:**
+- An `AgentSpaceTracingProcessor` registered with `agents.add_trace_processor` (the official extension point). It gets live start/end callbacks, so the office updates in real time.
+- `agent` spans become agents, `handoff` spans become handoffs (emitted at span *end*, because that's when from/to are filled in), `generation`/`response` spans become LLM calls with usage, and `function` spans become tool calls.
+- With `capture_content`, `tool.call` is sent at span end, because the SDK fills in the arguments while the span runs.
+- Each framework lives in its own uv dependency group, with a CI job per adapter.
+- The tests use a scripted `Model` that opens `generation_span`s like the real models.
+
+**Why:** this is the SDK's documented hook, it's live, and it needs no monkey-patching. Separate groups keep heavy frameworks from constraining each other or the core SDK.

@@ -1,0 +1,410 @@
+"""OpenAI Agents SDK adapter.
+
+Uses the SDK's official tracing extension point: a ``TracingProcessor`` registered with
+``agents.add_trace_processor``. The SDK calls it live on every trace/span start and end.
+
+Mapping:
+
+- trace                      -> run.started / run.finished (unless inside agentspace.run())
+- ``agent`` span             -> agent: agent.registered, step.started(kind=agent), status
+- ``handoff`` span           -> handoff (explicit, from_agent -> to_agent)
+- agent span nested inside another agent's span (agent-as-tool) -> handoff (delegation)
+- ``generation`` / ``response`` span -> llm.call (model, tokens, duration)
+- ``function`` span          -> tool.call + tool.result (+ using_tool status)
+- ``custom`` / ``guardrail`` span -> step (kind=custom)
+- turn / task / other spans  -> context only (children inherit the agent)
+
+The team (office room) defaults to the trace's workflow name. Override it with trace metadata
+``{"agentspace_team": "..."}`` (``RunConfig(trace_metadata=...)``).
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from agents.tracing import TracingProcessor
+
+from agentspace import _api
+from agentspace._client import AgentInfo
+from agentspace._context import current_run
+from agentspace._log import internal_error
+from agentspace._util import slugify, truncate
+
+if TYPE_CHECKING:
+    from agents.tracing import Span, Trace
+
+    from agentspace._client import Client
+
+
+@dataclass
+class _Run:
+    run_id: str
+    owned: bool
+    team_id: str | None
+    t0: float
+    agents: set[str] = field(default_factory=set)
+    last_status: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+
+
+@dataclass
+class _Node:
+    run: _Run
+    agent_id: str | None
+    step_id: str | None
+    kind: str
+    t0: float
+    name: str | None = None
+    parent_step: str | None = None
+
+
+class AgentSpaceTracingProcessor(TracingProcessor):
+    """Streams OpenAI Agents SDK traces to AgentSpace. Thread-safe; never raises."""
+
+    def __init__(self) -> None:
+        self._runs: dict[str, _Run] = {}
+        self._nodes: dict[str, _Node] = {}
+        self._lock = threading.Lock()
+
+    # ---------------- helpers ----------------
+
+    @staticmethod
+    def _client() -> Client | None:
+        return _api.get_client()
+
+    def _emit(self, node: _Node, type: str, data: dict[str, Any], **fields: Any) -> None:
+        client = self._client()
+        if client is None:
+            return
+        fields.setdefault("agent_id", node.agent_id)
+        fields.setdefault("team_id", node.run.team_id if node.agent_id else None)
+        fields.setdefault("parent_id", node.step_id)
+        client.emit(type, data, run_id=node.run.run_id, **fields)
+
+    def _status(self, node: _Node, status: str, detail: str | None = None) -> None:
+        if node.agent_id:
+            with self._lock:
+                if node.run.last_status.get(node.agent_id) == (status, detail):
+                    return  # nothing changed
+                node.run.last_status[node.agent_id] = (status, detail)
+            self._emit(
+                node,
+                "agent.status",
+                {"status": status, "detail": truncate(detail, 500) if detail else None},
+            )
+
+    def _parent(self, span: Span[Any]) -> _Node | None:
+        if span.parent_id and span.parent_id in self._nodes:
+            return self._nodes[span.parent_id]
+        run = self._runs.get(span.trace_id)
+        return _Node(run, None, None, "trace", run.t0) if run else None
+
+    # ---------------- traces ----------------
+
+    def on_trace_start(self, trace: Trace) -> None:
+        try:
+            client = self._client()
+            if client is None:
+                return
+            meta = getattr(trace, "metadata", None) or {}
+            active = current_run.get()
+            team = meta.get("agentspace_team") or trace.name
+            run = _Run(
+                active or trace.trace_id,
+                active is None,
+                slugify(str(team)) if team else None,
+                time.monotonic(),
+            )
+            with self._lock:
+                self._runs[trace.trace_id] = run
+            if run.owned:
+                client.emit(
+                    "run.started",
+                    {"name": trace.name, "framework": "openai-agents"},
+                    run_id=run.run_id,
+                    agent_id=None,
+                    team_id=None,
+                    parent_id=None,
+                    summary=trace.name,
+                )
+        except Exception as exc:
+            internal_error("openai_agents.on_trace_start", exc)
+
+    def on_trace_end(self, trace: Trace) -> None:
+        try:
+            with self._lock:
+                run = self._runs.pop(trace.trace_id, None)
+                for key in [k for k, n in self._nodes.items() if n.run is run]:
+                    del self._nodes[key]
+            client = self._client()
+            if run is None or client is None:
+                return
+            for agent_id in sorted(run.agents):
+                client.emit(
+                    "agent.status",
+                    {"status": "done"},
+                    run_id=run.run_id,
+                    agent_id=agent_id,
+                    team_id=run.team_id,
+                    parent_id=None,
+                )
+            if run.owned:
+                client.emit(
+                    "run.finished",
+                    {"status": "ok", "duration_ms": round((time.monotonic() - run.t0) * 1000, 1)},
+                    run_id=run.run_id,
+                    agent_id=None,
+                    team_id=None,
+                    parent_id=None,
+                )
+        except Exception as exc:
+            internal_error("openai_agents.on_trace_end", exc)
+
+    # ---------------- spans ----------------
+
+    def on_span_start(self, span: Span[Any]) -> None:
+        try:
+            if self._client() is None:
+                return
+            parent = self._parent(span)
+            if parent is None:
+                return
+            data = span.span_data
+            kind = data.type
+            node = _Node(
+                parent.run,
+                parent.agent_id,
+                parent.step_id,
+                kind,
+                time.monotonic(),
+                parent_step=parent.step_id,
+            )
+
+            if kind == "agent":
+                node = self._start_agent(span, parent)
+            elif kind in ("generation", "response"):
+                self._status(node, "thinking")
+            elif kind == "function":
+                node.name = str(getattr(data, "name", "tool"))
+                self._status(node, "using_tool", node.name)
+                # The SDK fills in the arguments while the span runs. When content capture is on,
+                # tool.call is sent at span end so it can carry them; otherwise it's sent now.
+                if not self._capturing():
+                    self._tool_call(node, span, None)
+            elif kind in ("custom", "guardrail") and getattr(data, "name", None) not in (
+                "turn",
+                "task",
+            ):
+                node.name = truncate(str(getattr(data, "name", kind)), 256)
+                node.step_id = span.span_id
+                self._emit(
+                    node,
+                    "step.started",
+                    {"step_id": span.span_id, "name": node.name, "kind": "custom"},
+                    parent_id=parent.step_id,
+                )
+
+            with self._lock:
+                self._nodes[span.span_id] = node
+        except Exception as exc:
+            internal_error("openai_agents.on_span_start", exc)
+
+    def _start_agent(self, span: Span[Any], parent: _Node) -> _Node:
+        client = self._client()
+        name = str(span.span_data.name)
+        agent_id = slugify(name)
+        run = parent.run
+        if client:
+            client.upsert_agent(AgentInfo(agent_id, name, run.team_id, framework="openai-agents"))
+        node = _Node(
+            run,
+            agent_id,
+            span.span_id,
+            "agent",
+            time.monotonic(),
+            name=name,
+            parent_step=parent.step_id,
+        )
+        with self._lock:
+            run.agents.add(agent_id)
+        if parent.agent_id and parent.agent_id != agent_id:  # agent used as a tool by another agent
+            self._emit(
+                node,
+                "handoff",
+                {"from_agent_id": parent.agent_id, "to_agent_id": agent_id},
+                agent_id=parent.agent_id,
+                parent_id=parent.step_id,
+                summary=f"handed off to {name}",
+            )
+        self._emit(
+            node,
+            "step.started",
+            {"step_id": span.span_id, "name": name, "kind": "agent"},
+            parent_id=parent.step_id,
+        )
+        self._status(node, "thinking")
+        return node
+
+    def on_span_end(self, span: Span[Any]) -> None:
+        try:
+            with self._lock:
+                node = self._nodes.pop(span.span_id, None)
+            if node is None or self._client() is None:
+                return
+            data = span.span_data
+            kind = data.type
+            err = span.error
+            duration = round((time.monotonic() - node.t0) * 1000, 1)
+            err_msg = (
+                truncate(str(err.get("message") if isinstance(err, dict) else err), 2000)
+                if err
+                else None
+            )
+
+            if kind == "agent" or (node.kind == "custom" and node.step_id == span.span_id):
+                if err:
+                    self._emit(node, "error", {"message": err_msg or "error", "kind": "AgentError"})
+                self._emit(
+                    node,
+                    "step.finished",
+                    {
+                        "step_id": span.span_id,
+                        "name": node.name or kind,
+                        "ok": not err,
+                        "duration_ms": duration,
+                        "error": err_msg,
+                    },
+                    parent_id=node.parent_step,
+                )
+                if kind == "agent":
+                    self._status(node, "error" if err else "idle", err_msg)
+            elif kind in ("generation", "response"):
+                model, tin, tout = _usage(data)
+                self._emit(
+                    node,
+                    "llm.call",
+                    {
+                        "provider": "openai" if kind == "response" else None,
+                        "operation": "chat",
+                        "duration_ms": duration,
+                        "input": self._content("llm.input", getattr(data, "input", None)),
+                        "output": self._content("llm.output", getattr(data, "output", None)),
+                    },
+                    tokens_in=tin,
+                    tokens_out=tout,
+                    model=model,
+                    summary=f"{model or 'model'} replied",
+                )
+                if err:
+                    self._emit(
+                        node, "error", {"message": err_msg or "model error", "kind": "ModelError"}
+                    )
+            elif kind == "handoff":
+                # from_agent/to_agent are only filled in by the time the span ends.
+                src = getattr(data, "from_agent", None)
+                dst = getattr(data, "to_agent", None)
+                if src and dst:
+                    self._emit(
+                        node,
+                        "handoff",
+                        {"from_agent_id": slugify(src), "to_agent_id": slugify(dst)},
+                        agent_id=slugify(src),
+                        summary=f"handed off to {dst}",
+                    )
+            elif kind == "function":
+                if self._capturing():
+                    self._tool_call(node, span, getattr(data, "input", None))
+                self._emit(
+                    node,
+                    "tool.result",
+                    {
+                        "tool_name": node.name or "tool",
+                        "call_id": span.span_id,
+                        "ok": not err,
+                        "duration_ms": duration,
+                        "error": err_msg,
+                        "result": None
+                        if err
+                        else self._content("tool.result", getattr(data, "output", None)),
+                    },
+                    summary=f"{node.name} {'failed' if err else 'ok'}",
+                )
+                self._status(node, "thinking")
+        except Exception as exc:
+            internal_error("openai_agents.on_span_end", exc)
+
+    def _tool_call(self, node: _Node, span: Span[Any], arguments: Any) -> None:
+        self._emit(
+            node,
+            "tool.call",
+            {
+                "tool_name": node.name or "tool",
+                "call_id": span.span_id,
+                "arguments": self._content("tool.arguments", arguments),
+            },
+            summary=f"{node.name}()",
+        )
+
+    def _capturing(self) -> bool:
+        client = self._client()
+        return bool(client and client.config.capture_content)
+
+    def _content(self, field_name: str, value: Any) -> Any:
+        client = self._client()
+        return client.content(field_name, value) if client else None
+
+    def shutdown(self) -> None:
+        pass
+
+    def force_flush(self) -> None:
+        _api.flush(timeout=2.0)
+
+
+def _usage(data: Any) -> tuple[str | None, int | None, int | None]:
+    """Model name and token usage from a generation or response span."""
+    usage = getattr(data, "usage", None)
+    model = getattr(data, "model", None)
+    response = getattr(data, "response", None)
+    if response is not None:
+        model = model or getattr(response, "model", None)
+        usage = usage or getattr(response, "usage", None)
+    if isinstance(usage, dict):
+        tin, tout = usage.get("input_tokens"), usage.get("output_tokens")
+    else:
+        tin, tout = getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None)
+    return (str(model) if model else None, _int(tin), _int(tout))
+
+
+def _int(v: Any) -> int | None:
+    try:
+        return int(v) if v is not None and int(v) >= 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+_processor: AgentSpaceTracingProcessor | None = None
+
+
+def instrument(client: Client | None = None) -> bool:
+    """Register the processor with the OpenAI Agents SDK. Idempotent."""
+    global _processor
+    if _processor is not None:
+        return True
+    from agents import add_trace_processor
+
+    _processor = AgentSpaceTracingProcessor()
+    add_trace_processor(_processor)
+    return True
+
+
+def get_processor() -> AgentSpaceTracingProcessor:
+    """The shared processor, e.g. for ``agents.set_trace_processors([get_processor()])``."""
+    global _processor
+    if _processor is None:
+        _processor = AgentSpaceTracingProcessor()
+    return _processor
+
+
+__all__ = ["AgentSpaceTracingProcessor", "get_processor", "instrument"]
