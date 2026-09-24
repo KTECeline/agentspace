@@ -137,7 +137,7 @@ I also checked by hand in the browser against a live collector:
 - web 41
 
 ### Deferred or known gaps
-- **The Postgres store isn't implemented yet.** The interface and contract tests are ready (`TEST_DATABASE_URL`), but the `pg` driver can't be installed while npm is TLS-intercepted. `AGENTSPACE_DATABASE_URL=postgres://…` currently fails at startup with a clear message. The compose `postgres` profile and the CI Postgres job come with it.
+- **The Postgres store isn't implemented yet, and it's deferred** (the user's call, 2026-09-24; it comes back once npm is reachable). The interface and contract tests are ready (`TEST_DATABASE_URL`), but the `pg` driver can't be installed while npm is TLS-intercepted. `AGENTSPACE_DATABASE_URL=postgres://…` currently fails at startup with a clear message. The compose `postgres` profile and the CI Postgres job come with it.
 - **The CA build arg hasn't been tested end to end.** The proxy doesn't send its CA in the chain, and it isn't in the local keychain. Both Dockerfiles pass `docker build --check`.
 - **Pause needs an explicit hook in some cases:** in async code without an adapter hook (`await acheckpoint()`), for OpenAI Agents (`ControlHooks`) and for CrewAI (`step_checkpoint`). LangGraph async graphs pause at `acheckpoint()` inside nodes.
 - **Cancelling is final** for the run id. With the Claude Agent SDK, later prompts in the same session are stopped too.
