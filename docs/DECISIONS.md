@@ -219,3 +219,51 @@ What broke and what changed:
 - WebSocket auth is the first message (`{"type":"auth","token"}`), because browsers can't set headers on WebSockets and tokens in URLs end up in logs.
 - Tokens are compared in constant time.
 - With nothing configured, everything stays open: the local two-minute setup is unchanged.
+
+## D-033 · SDK control semantics: safe points, fail-closed approvals (2026-09-24)
+**Decision:**
+- **Delivery.** Controls reach the SDKs two ways: piggybacked on ingest responses (`controls`), and through a 2 s poll of `GET …/controls` for runs active in the last minute, so idle runs still learn about them. While paused, the SDK long-polls that endpoint.
+- **Cancel.** Python `Cancelled` subclasses `BaseException`, so `except Exception` can't swallow it. It's raised at safe points only: agent/step scope entry, `checkpoint()`, and adapter hooks. `init(cancel_mode="flag")` never raises; code polls `is_cancelled()`.
+- **Cancelled runs** finish with status `"cancelled"` and no `error` event. Agents end `done` with detail "cancelled by an operator".
+- **Pause.** Pausing blocks at the same safe points and never blocks an event loop. Async code pauses at `await acheckpoint()` or async adapter hooks, which wait in a thread. Sync callbacks on a loop only warn.
+- **Agent scopes** checkpoint just after registering, so the pause shows on the agent's own desk.
+- **Approvals** fail closed:
+  - `rejected` when not initialized, when the collector is unreachable (the flush fails, or 3 network failures in a row), or on 401/403;
+  - `timeout` at the deadline;
+  - never approved by accident, and never hangs past its timeout.
+  - The payload bypasses `capture_content` (a person has to see it) but still goes through `redact`.
+- **TypeScript** has the same API (`requestApproval`, `checkpoint`, `Cancelled`, `cancelMode`). JS has no BaseException, so `isCancelled(err)` exists for rethrowing from catch-all blocks. Scopes check for cancel synchronously; pausing needs `await checkpoint()`.
+
+**Why:** cancel must be hard to swallow but never kill work mid-call (hence safe points only). A pause must not freeze unrelated async work. An approval that silently approves on error would be a security bug.
+
+## D-034 · Adapter control points (2026-09-24)
+**Decision:** each adapter uses its framework's own hook for pause and cancel:
+- **LangGraph:** node, model and tool start callbacks. `Cancelled` propagates because LangChain's `handle_event` only catches `Exception`. `adapters.langgraph.request_approval_sync` attaches the approval to the calling node, using LangChain's active-config contextvar.
+- **OpenAI Agents:**
+  - cancel is raised from `on_span_start` (the processor provider only catches `Exception`);
+  - pausing needs `hooks=ControlHooks()` (async `RunHooks`), because a tracing processor must never block the loop.
+- **CrewAI:** handlers run on a thread pool and can't stop a crew, so `step_callback=step_checkpoint` is the safe point. On cancel it closes the run itself, because CrewAI emits no "completed" or "failed" event for a `BaseException`.
+- **Claude Agent SDK:**
+  - the PreToolUse hook is the safe point. Its matcher timeout is 3600 s so a pause can outlast the SDK's 60 s default.
+  - On cancel it denies the tool with `continue: false` and never raises into the SDK.
+  - `approval_callback()` is a fail-closed `can_use_tool`.
+
+**Why:** only framework-supported extension points (no monkeypatching). Where a framework can't be stopped from a callback, we provide the one opt-in hook that can.
+
+## D-035 · Web operator UI and the browser token (2026-09-24)
+**Decision:**
+- `GET /v1/info` decides what the page shows. Operator controls appear only for a live collector that isn't in public mode.
+- **Token.** The operator token is kept in `localStorage`, sent as `Authorization: Bearer` to REST and as the first WebSocket message, and only to the configured collector. A 4401 close shows a "private office" screen instead of a reconnect loop.
+- **Cancel** needs a second click within 5 s. No browser dialogs.
+- **Approvals** live in an Approvals tab and a header pill. Pending approvals also show in the agent panel. Public mode shows "details hidden".
+- **Connection state.** "Live" appears only after the collector's first message, because a protected collector accepts the socket but stays silent until the token checks out.
+
+**Why:** browsers can't set WebSocket headers, and tokens in URLs leak into logs. `localStorage` is enough for a self-hosted operator console; a session login can come later if needed.
+
+## D-036 · Corporate CA as an optional build arg (2026-09-24)
+**Decision:**
+- `EXTRA_CA_CERT` is a Docker build arg holding PEM text. Compose fills it from `AGENTSPACE_EXTRA_CA_CERT` and it's empty by default.
+- It's written to `/tmp` in the build stage and exported as `NODE_EXTRA_CA_CERTS` only for the install/build steps. Runtime images never contain it.
+- `.gitignore` ignores `*.pem`, `*.crt` and `*.key`. It's documented in CONTRIBUTING.md.
+
+**Why:** some networks intercept TLS. Trusting their CA explicitly is safe; disabling verification isn't, and committing a company certificate would leak it into a public repo.

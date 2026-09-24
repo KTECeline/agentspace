@@ -17,7 +17,7 @@ Full brief: `docs/BRIEF.md`. Status: `docs/PROGRESS.md`. Why things are the way 
 | `packages/spec-types` | Generated TS types + hand-written API types (`src/api.ts`) + schema copy | TS source, no build |
 | `packages/sdk-python` | SDK: distribution `agentspace-sdk`, import `agentspace`; `adapters/` (langgraph, openai_agents, crewai, claude_agent_sdk), `claude_code.py` (hook command) | Python ≥3.10, uv, hatchling |
 | `packages/sdk-ts` | TS SDK, npm `agentspace-sdk` (same API, callback scopes) | TS, tsup, vitest; no runtime deps |
-| `server/` | Collector: ingest, OTLP (`src/otlp/`), SQLite store, WS fan-out | Node 22, Fastify 5, better-sqlite3, Ajv, protobufjs |
+| `server/` | Collector: ingest, OTLP (`src/otlp/`), `Store` interface (`src/store/`: SQLite; Postgres pending), auth (`src/auth.ts`), approvals + run controls, WS fan-out | Node 22, Fastify 5, better-sqlite3, Ajv, protobufjs |
 | `web/` | Office UI (3D + 2D), `/demo` | Next.js 16 (App Router), React 19, Tailwind v4, react-three-fiber 9, drei 10, zustand 5 |
 | `examples/*` | langgraph-dev-team, crewai-research-desk, openai-agents-handoffs, claude-agent-sdk-support (`--replay`), otel-generic | one uv project each, path-dep on the SDK |
 | `placeholders/` | 0.0.1 name-reservation packages (published; see D-019) | — |
@@ -43,6 +43,8 @@ pnpm --filter @agentspace/web test                   # web unit tests
 - **OTLP:** `server/src/otlp/` (decode → assembler). Spans become events on span end; non-agent spans wait for their parent (hold). Event ids come from span ids.
 - **Totals rule:** tokens and cost are summed over `llm.call` events only.
 - **Privacy:** content fields are only filled when `capture_content=True`, via `Client.content(field, value)`, which applies redaction.
+- **Two-way control (D-033/034):** approvals and pause/cancel go SDK → `approval.requested` event → the collector's `approvals` table → an operator resolves (REST) → the SDK long-polls `GET …/approvals/:id?wait=`. Controls reach the SDK via the ingest response's `controls` field plus a 2 s poll; while paused, it long-polls `…/controls`. Python logic is in `agentspace/_control.py`, TS in `src/control.ts`. `Cancelled` is a `BaseException`, raised only at safe points. Approvals must always fail closed. Resolve/control run as single store transactions with a deterministic event id.
+- **Auth (D-032):** `server/src/auth.ts`. Nothing configured means open. Public read-only mode strips approval payloads on every read path (`redactEvent`/`redactApproval` in `app.ts`); new read paths must use them too.
 - **SDK safety rule:** every public entry point catches its own exceptions (`internal_error()`), but user exceptions always propagate unchanged. New code on the hot path must stay O(1) and non-blocking. `tests/test_reliability.py` enforces this.
 
 ## Conventions
@@ -65,3 +67,5 @@ pnpm --filter @agentspace/web test                   # web unit tests
 - Python framework work: `uv sync --group openai-agents|crewai|claude-agent-sdk` (one at a time; the groups conflict on purpose). The CrewAI group has a `python_version < '3.14'` marker. After changing the SDK's `pyproject.toml`, re-lock each example (`uv lock` in `examples/*`) or the CI example jobs fail on `--locked`.
 - CrewAI calls handlers on a thread pool, so tests must `crewai_event_bus.flush()` and must not assume order.
 - The dev network may intercept TLS to registry.npmjs.org (Fortinet). Docker `pnpm install` then fails; never work around it by disabling TLS verification.
+- Browser automation can't type tokens. To check the web operator UI by hand, run a collector without auth (`PORT=4810 AGENTSPACE_DB=/tmp/x.db pnpm -s exec tsx src/index.ts` in `server/`) and open `/?collector=http://localhost:4810`. `scripts/controls_check.sh` covers the token path.
+- `pg` (Postgres store) isn't installed yet: npm is blocked by the TLS intercept. `src/store/postgres.ts` is a placeholder that throws.

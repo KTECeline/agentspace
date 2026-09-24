@@ -89,5 +89,62 @@
 - The OTLP endpoint is on the collector's port 4800; the standard port 4318 isn't exposed yet.
 - Cost is still mostly $0. Only the Claude Agent SDK reports billed cost; price tables come in Phase 4.
 
-## Phase 4: Two-way control + replay + cost (next)
-`request_approval` end to end (approve or reject from the office), pause/cancel, the replay timeline, the cost dashboard with model price tables, the Postgres option, and auth.
+## Phase 4a: Store interface, auth, approvals, pause/cancel ✅ (2026-09-24, awaiting review)
+
+**Done-check:** `scripts/controls_check.sh` passed against a local collector, both open and with an operator token. It covers:
+- the example's Engineer asks for approval, which is approved over REST, and the run finishes;
+- a second resolve returns 409 with no duplicate event;
+- pause shows the agent blocked, resume clears it;
+- cancel stops the example cleanly, with run status "cancelled".
+
+`demo_check.sh` now runs it. The full Docker done-check wasn't re-run, because Docker can't rebuild the images while npm is TLS-intercepted (see below).
+
+I also checked by hand in the browser against a live collector:
+- inbox → approve with comment → agent continues;
+- pause → resume → cancel;
+- private-office screen on 4401;
+- public mode hides the payload and all controls.
+
+- [x] **Spec:** `run.control` event (D-030).
+- [x] **Collector:**
+  - async `Store` interface plus a contract suite (D-031); `SqliteStore`;
+  - `approvals` table and `runs.control`;
+  - atomic, idempotent resolve (409; deterministic event id);
+  - approvals expire into `timeout`.
+- [x] **Auth** (D-032): workspace API keys, operator token, public read-only mode (payloads stripped everywhere), WebSocket first-message auth, `GET /v1/info`.
+- [x] **REST:**
+  - approvals list, get, and long-poll (`?wait=`), resolve;
+  - run control (pause/resume/cancel);
+  - controls long-poll for SDKs.
+- [x] **Python SDK** (D-033):
+  - `request_approval` / `request_approval_sync` (fail closed);
+  - `Cancelled(BaseException)`, `init(cancel_mode=)`;
+  - `checkpoint` / `acheckpoint` / `is_cancelled`; scope safe points.
+- [x] **Adapters** (D-034):
+  - LangGraph (auto, plus `request_approval_sync` bound to the node);
+  - OpenAI Agents (auto cancel, plus `ControlHooks` for pause);
+  - CrewAI (`step_checkpoint`);
+  - Claude Agent SDK (PreToolUse gate, plus `approval_callback()`).
+- [x] **TypeScript SDK:** `requestApproval`, `checkpoint`, `Cancelled`/`isCancelled`, `cancelMode`. Also **fixed a transport bug**: after a drain found an empty queue, the SDK never sent again.
+- [x] **Web** (D-035): Approvals tab and header pill, approve/reject with comment, pending approvals in the agent panel, pause/resume/cancel, operator token dialog, private-office screen, read-only badge.
+- [x] **Example:** `langgraph-dev-team --approve` (the Engineer asks before writing files).
+- [x] **Optional CA build arg** + CONTRIBUTING.md (D-036).
+
+**Test counts:**
+- Python 60 core, plus 8–12 per adapter group
+- TS SDK 26
+- collector 30
+- web 41
+
+### Deferred or known gaps
+- **The Postgres store isn't implemented yet.** The interface and contract tests are ready (`TEST_DATABASE_URL`), but the `pg` driver can't be installed while npm is TLS-intercepted. `AGENTSPACE_DATABASE_URL=postgres://…` currently fails at startup with a clear message. The compose `postgres` profile and the CI Postgres job come with it.
+- **The CA build arg hasn't been tested end to end.** The proxy doesn't send its CA in the chain, and it isn't in the local keychain. Both Dockerfiles pass `docker build --check`.
+- **Pause needs an explicit hook in some cases:** in async code without an adapter hook (`await acheckpoint()`), for OpenAI Agents (`ControlHooks`) and for CrewAI (`step_checkpoint`). LangGraph async graphs pause at `acheckpoint()` inside nodes.
+- **Cancelling is final** for the run id. With the Claude Agent SDK, later prompts in the same session are stopped too.
+- **A small rendering glitch:** while the 3D scene mounts (about 1 s), the agent labels bunch up in the top-left corner. It isn't from this phase.
+
+## Phase 4b: Cost + replay + docs (next)
+- Price table with `as_of` and a source URL per model.
+- Costs carry `source: estimated | reported`, and the UI shows "est.".
+- Cost dashboard and replay timeline.
+- Examples and docs.

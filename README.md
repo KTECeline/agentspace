@@ -112,6 +112,29 @@ with agentspace.run("weekly-report"):
 
 LangGraph: `config={"metadata": {"agentspace_team": "Engineering"}}` puts a graph's agents in the same team. By default, the team is the graph's name.
 
+### Approvals, pause and cancel
+
+```python
+result = agentspace.request_approval_sync("Deploy v1.2 to prod?", {"version": "1.2"}, timeout=300)
+if result.approved:
+    deploy()
+# Fails closed: "rejected" or "timeout" if nobody approves in time or the collector is down.
+
+agentspace.checkpoint()   # a safe point: waits while paused, raises agentspace.Cancelled once cancelled
+```
+
+Approve or reject in the office's **Approvals** tab. Pause, resume or cancel a run from the header. `agentspace.Cancelled` subclasses `BaseException`, so `except Exception` won't swallow it. Use `init(cancel_mode="flag")` and `is_cancelled()` if you'd rather poll. Agent and step scopes are safe points too. The adapters add their own safe points: LangGraph does it automatically; OpenAI Agents needs `hooks=ControlHooks()` to pause; CrewAI uses `step_callback=step_checkpoint`; the Claude Agent SDK uses its PreToolUse hook plus `can_use_tool=approval_callback()`.
+
+### Securing the collector
+
+| Variable | Effect |
+|---|---|
+| `AGENTSPACE_API_KEYS=ws:key,…` | SDKs must send a key for the workspace (`*` = all). |
+| `AGENTSPACE_OPERATOR_TOKEN` | Needed to watch, approve, pause and cancel. The browser asks for it (key button). |
+| `AGENTSPACE_PUBLIC_READONLY=true` | Anyone can watch. Approval details are hidden and every operator action is refused. |
+
+With none set (the default), a local collector is open.
+
 ## Development
 
 Requirements: Node 22+, pnpm 10, [uv](https://docs.astral.sh/uv/), Docker.
@@ -122,7 +145,8 @@ make dev            # collector (:4800) + web (:4801) with hot reload
 make test           # pytest + vitest
 make lint typecheck # ruff, mypy, eslint, tsc
 make gen-types      # regenerate TS + Python types after editing spec/
-make demo-check     # compose up, check /demo, run example live, kill collector mid-run, expect exit 0
+make demo-check     # compose up, check /demo, approvals + pause/cancel, run example live, kill collector mid-run
+# Behind a TLS-intercepting proxy? See CONTRIBUTING.md (optional CA build arg).
 make record         # save the latest finished run as the /demo recording
 cd packages/sdk-python && uv sync --group crewai   # one framework group at a time for adapter work
 ```
