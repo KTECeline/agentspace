@@ -4,15 +4,31 @@
 
 ![AgentSpace: a LangGraph dev team (Manager, Triage, Engineer) at their desks in a cozy isometric office, with a live event log](docs/assets/office-3d.jpg)
 
-> 🚧 **Early development: Phase 4 of 5.** Working today:
-> - the live 3D office (plus a 2D view), with replay of any stored run;
-> - Python and TypeScript SDKs;
-> - adapters for LangGraph, CrewAI, the OpenAI Agents SDK, the Claude Agent SDK and Claude Code;
-> - OpenTelemetry (OTLP) ingest;
-> - approvals, pause and cancel from the office, and auth;
-> - a cost dashboard, with list-price estimates clearly marked "est.".
->
-> Next: Postgres, benchmarks and releases. See [docs/PROGRESS.md](docs/PROGRESS.md).
+**[Docs](web/content/docs/index.md)** · **Demo:** `/demo` in any install (recorded runs, no setup) · [Benchmarks](bench/README.md) · [Changelog](spec/CHANGELOG.md)
+
+```mermaid
+flowchart LR
+  subgraph app["Your agent app"]
+    fw["LangGraph · CrewAI · OpenAI Agents<br/>Claude Agent SDK · Claude Code<br/>or any OpenTelemetry exporter"]
+    sdk["agentspace SDK<br/>(background thread, bounded queue)"]
+    fw --> sdk
+  end
+  subgraph collector["AgentSpace collector"]
+    ingest["validate · de-duplicate<br/>price model calls"]
+    db[("SQLite<br/>events + projections")]
+    ctl["approvals · pause · cancel"]
+    ingest --> db
+    ctl --> db
+  end
+  office["The office (browser)<br/>live 3D/2D view · approvals<br/>replay · costs"]
+  sdk -- "events (HTTP batches)" --> ingest
+  fw -. "OTLP /v1/traces" .-> ingest
+  db -- "WebSocket: snapshot + deltas" --> office
+  office -- "approve / pause / cancel" --> ctl
+  ctl -. "decisions (long-poll)" .-> sdk
+```
+
+> 🚧 **Pre-release (0.1).** Everything below works today, and APIs may still change before 1.0. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quickstart
 
@@ -59,16 +75,24 @@ Want to see it without writing any code?
 - **Private by default.** Only metadata and short summaries leave your process. Prompts and outputs are opt-in (`capture_content=True`) and pass through your redaction hook.
 - **It can't break your app.** Events are queued in memory and sent by a background thread. If the collector is down, your app keeps running: memory stays bounded and you get one warning. SDK errors are never raised into your code. This is tested, including "kill the collector mid-run" in `make demo-check`.
 
+## How it compares
+
+AgentSpace is a **live operations view** for agent teams: watch them work, step in, and see what they cost. It isn't an evaluation or prompt-management platform, and it works alongside one: it speaks OpenTelemetry, so the same spans can go to both.
+
+| | AgentSpace | [Langfuse](https://langfuse.com) | [LangSmith](https://www.langchain.com/langsmith) | [pixel-agents](https://github.com/pablodelucca/pixel-agents) |
+|---|---|---|---|---|
+| **Main view** | a live 3D/2D office per team, plus replay | traces, sessions and dashboards | traces and dashboards | a pixel-art office |
+| **Agents covered** | LangGraph, CrewAI, OpenAI Agents SDK, Claude Agent SDK, Claude Code, OpenTelemetry, manual Python/TS API | 100+ integrations, OpenTelemetry | many frameworks, OpenTelemetry | Claude Code (others on its roadmap) |
+| **Approve, pause and cancel running agents from the UI** | ✅ (approvals fail closed) | — | — | shows when an agent waits for permission |
+| **Cost tracking** | ✅ reported costs kept; estimates marked **est.** | ✅ ingested or inferred from model prices | ✅ | — |
+| **Evals, datasets, prompt management** | — | ✅ | ✅ | — |
+| **License and hosting** | Apache 2.0; self-host (Docker) | MIT (except `ee`); cloud or self-host | commercial (MIT SDKs); cloud, or self-host on Enterprise | MIT; VS Code extension or local CLI |
+
+Compared from each project's public docs on 2026-09-25. Corrections are welcome.
+
 ## How it works
 
-```
- your agent app                         AgentSpace
-┌───────────────────────┐   batched    ┌───────────────────┐  WebSocket  ┌───────────────┐
-│ LangGraph / manual API│───HTTP──────▶│ Collector         │────────────▶│ Web office    │
-│ + agentspace SDK      │  POST        │ SQLite + fan-out  │  snapshot + │ agents, log,  │
-│ (background thread)   │  /v1/events  │ Fastify, :4800    │  deltas     │ runs · :4801  │
-└───────────────────────┘              └───────────────────┘             └───────────────┘
-```
+The diagram at the top shows the flow. The pieces:
 
 - **[Event spec](spec/README.md)** (JSON Schema, v0.1) is the single source of truth. The Python (pydantic) and TypeScript types are generated from it, and it maps to the [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/semantic-conventions-genai).
 - **[Python SDK](packages/sdk-python)** (`pip install agentspace-sdk`, `import agentspace`) has zero runtime dependencies and supports Python 3.10+. Its adapters live in `agentspace/adapters/`.
@@ -78,6 +102,20 @@ Want to see it without writing any code?
 - **[Web](web)**: Next.js, Tailwind, and react-three-fiber. Furniture is instanced and labels are one DOM layer, so **50 agents at 100 events/s run at about 60 fps** (production build, MacBook Air; try `/demo?stress=50`).
 
 ![50 agents in 8 teams under synthetic load, 60 fps](docs/assets/office-stress-50.jpg)
+
+## Benchmarks
+
+Measured on an Apple M4 (16 GB, macOS 26.6.2), Python 3.12.13 and Node 22.17.0. Every number, its method and the command to reproduce it are in [bench/README.md](bench/README.md).
+
+| Per call, collector running | `emit` p99 | `step` p99 | `agent` p99 |
+|---|---|---|---|
+| Python SDK | 116 µs | 147 µs | 242 µs |
+| TypeScript SDK | 4 µs | 8 µs | 11 µs |
+
+- **Target met:** under 1 ms at p99 for every call, including with the collector down or stalled (where calls are cheaper still).
+- **Never blocks:** at a steady 1,000 events/s, event-loop lateness is the same as without the SDK.
+- **Bounded memory:** with the collector down, 200,000 events leave 6 MB (Python) or 4 MB (Node), and the oldest are dropped.
+- **The office:** 50 agents at 100 events/s. Measure it yourself at `/demo?stress=50&rate=100&bench=20` ([bench/ui_load.md](bench/ui_load.md)).
 
 ## Examples
 
