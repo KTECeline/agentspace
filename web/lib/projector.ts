@@ -15,9 +15,7 @@ export class Projector {
   apply(ev: AgentSpaceEvent): { agent?: AgentState; run: RunState } {
     this.clock += 1;
     const isLlm = ev.type === "llm.call";
-    const tokensIn = isLlm ? (ev.tokens_in ?? 0) : 0;
-    const tokensOut = isLlm ? (ev.tokens_out ?? 0) : 0;
-    const cost = isLlm ? (ev.cost_usd ?? 0) : 0;
+    const u = usageOf(ev);
 
     // --- run ---
     const rkey = `${ev.workspace}\u0000${ev.run_id}`;
@@ -33,18 +31,14 @@ export class Projector {
         finished_at: null,
         duration_ms: null,
         event_count: 1,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        cost_usd: cost,
+        ...u,
         control: "running",
       };
     } else {
       run = {
         ...run,
         event_count: run.event_count + 1,
-        tokens_in: run.tokens_in + tokensIn,
-        tokens_out: run.tokens_out + tokensOut,
-        cost_usd: run.cost_usd + cost,
+        ...add(run, u),
       };
     }
     if (ev.type === "run.started") {
@@ -77,6 +71,8 @@ export class Projector {
       tokens_in: 0,
       tokens_out: 0,
       cost_usd: 0,
+      cost_estimated_usd: 0,
+      unpriced_calls: 0,
       model: null,
     };
     if (ev.type === "agent.registered") {
@@ -91,9 +87,7 @@ export class Projector {
       team_id: ev.team_id ?? agent.team_id,
       last_summary: ev.summary ?? agent.last_summary,
       model: (isLlm ? ev.model : undefined) ?? agent.model,
-      tokens_in: agent.tokens_in + tokensIn,
-      tokens_out: agent.tokens_out + tokensOut,
-      cost_usd: agent.cost_usd + cost,
+      ...add(agent, u),
     };
     this.agents.set(akey, agent);
     return { agent, run };
@@ -112,6 +106,36 @@ export class Projector {
       .sort(([a], [b]) => (this.runOrder.get(b) ?? 0) - (this.runOrder.get(a) ?? 0))
       .map(([, r]) => r);
   }
+}
+
+type Usage = Pick<RunState, "tokens_in" | "tokens_out" | "cost_usd" | "cost_estimated_usd" | "unpriced_calls">;
+
+/**
+ * What an event adds to its agent's and run's totals. Only `llm.call` counts (the totals rule).
+ * Mirrors `usageOf` in server/src/store/sqlite.ts.
+ */
+export function usageOf(ev: AgentSpaceEvent): Usage {
+  if (ev.type !== "llm.call") return { tokens_in: 0, tokens_out: 0, cost_usd: 0, cost_estimated_usd: 0, unpriced_calls: 0 };
+  const tokensIn = ev.tokens_in ?? 0;
+  const tokensOut = ev.tokens_out ?? 0;
+  const cost = ev.cost_usd ?? 0;
+  return {
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    cost_usd: cost,
+    cost_estimated_usd: ev.cost_source === "estimated" ? cost : 0,
+    unpriced_calls: tokensIn + tokensOut > 0 && ev.cost_usd === undefined && ev.cost_source === undefined ? 1 : 0,
+  };
+}
+
+function add(row: Usage, u: Usage): Usage {
+  return {
+    tokens_in: row.tokens_in + u.tokens_in,
+    tokens_out: row.tokens_out + u.tokens_out,
+    cost_usd: row.cost_usd + u.cost_usd,
+    cost_estimated_usd: row.cost_estimated_usd + u.cost_estimated_usd,
+    unpriced_calls: row.unpriced_calls + u.unpriced_calls,
+  };
 }
 
 /** SQLite ORDER BY semantics: NULLs first, then binary string order. */

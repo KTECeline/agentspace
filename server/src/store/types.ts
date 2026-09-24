@@ -36,7 +36,9 @@ export type ControlOutcome =
  * Rules every implementation must follow:
  * - `insert` stores events idempotently (unique per workspace + id) and updates the
  *   agent/run/approval projections in the same transaction.
- * - Totals (tokens, cost) are summed over `llm.call` events only.
+ * - Totals (tokens, cost) are summed over `llm.call` events only. `cost_estimated_usd` is the
+ *   part with `cost_source: "estimated"`; `unpriced_calls` counts calls with tokens and neither
+ *   a cost nor a cost source (see `usageOf` in sqlite.ts; D-037).
  * - `resolveApproval` and `setControl` are atomic, and so is the event they emit. A second
  *   resolve of the same approval is a conflict and emits nothing.
  */

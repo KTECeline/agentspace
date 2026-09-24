@@ -65,6 +65,8 @@ export class SqliteStore implements Store {
         tokens_in      INTEGER NOT NULL DEFAULT 0,
         tokens_out     INTEGER NOT NULL DEFAULT 0,
         cost_usd       REAL NOT NULL DEFAULT 0,
+        cost_estimated_usd REAL NOT NULL DEFAULT 0,
+        unpriced_calls INTEGER NOT NULL DEFAULT 0,
         model          TEXT,
         PRIMARY KEY (workspace, agent_id)
       );
@@ -82,6 +84,8 @@ export class SqliteStore implements Store {
         tokens_in   INTEGER NOT NULL DEFAULT 0,
         tokens_out  INTEGER NOT NULL DEFAULT 0,
         cost_usd    REAL NOT NULL DEFAULT 0,
+        cost_estimated_usd REAL NOT NULL DEFAULT 0,
+        unpriced_calls INTEGER NOT NULL DEFAULT 0,
         control     TEXT NOT NULL DEFAULT 'running',
         updated_at  INTEGER NOT NULL,
         PRIMARY KEY (workspace, run_id)
@@ -107,9 +111,16 @@ export class SqliteStore implements Store {
       );
       CREATE INDEX IF NOT EXISTS approvals_status ON approvals (workspace, status, created_at);
     `);
-    // Databases created before run controls existed.
-    const cols = this.db.prepare(`PRAGMA table_info(runs)`).all() as { name: string }[];
-    if (!cols.some((c) => c.name === "control")) this.db.exec(`ALTER TABLE runs ADD COLUMN control TEXT NOT NULL DEFAULT 'running'`);
+    // Databases created before run controls (4a) and cost sources (D-037) existed.
+    const addColumn = (table: string, column: string, type: string) => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (!cols.some((c) => c.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    };
+    addColumn("runs", "control", "TEXT NOT NULL DEFAULT 'running'");
+    for (const table of ["agents", "runs"]) {
+      addColumn(table, "cost_estimated_usd", "REAL NOT NULL DEFAULT 0");
+      addColumn(table, "unpriced_calls", "INTEGER NOT NULL DEFAULT 0");
+    }
   }
 
   private prepare() {
@@ -130,15 +141,17 @@ export class SqliteStore implements Store {
       touchAgent: db.prepare(
         `UPDATE agents SET last_event_at = @ts, current_run_id = @run_id, team_id = COALESCE(@team_id, team_id),
            last_summary = COALESCE(@summary, last_summary), model = COALESCE(@model, model),
-           tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd
+           tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd,
+           cost_estimated_usd = cost_estimated_usd + @cost_estimated_usd, unpriced_calls = unpriced_calls + @unpriced_calls
          WHERE workspace = @workspace AND agent_id = @agent_id`,
       ),
       setAgentStatus: db.prepare(`UPDATE agents SET status = @status, status_detail = @detail WHERE workspace = @workspace AND agent_id = @agent_id`),
       ensureRun: db.prepare(
-        `INSERT INTO runs (workspace, run_id, started_at, updated_at, event_count, tokens_in, tokens_out, cost_usd)
-         VALUES (@workspace, @run_id, @ts, @now, 1, @tokens_in, @tokens_out, @cost_usd)
+        `INSERT INTO runs (workspace, run_id, started_at, updated_at, event_count, tokens_in, tokens_out, cost_usd, cost_estimated_usd, unpriced_calls)
+         VALUES (@workspace, @run_id, @ts, @now, 1, @tokens_in, @tokens_out, @cost_usd, @cost_estimated_usd, @unpriced_calls)
          ON CONFLICT (workspace, run_id) DO UPDATE SET event_count = event_count + 1, updated_at = @now,
-           tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd`,
+           tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd,
+           cost_estimated_usd = cost_estimated_usd + @cost_estimated_usd, unpriced_calls = unpriced_calls + @unpriced_calls`,
       ),
       startRun: db.prepare(
         `UPDATE runs SET name = COALESCE(@name, name), framework = COALESCE(@framework, framework), started_at = @ts, status = 'running'
@@ -212,12 +225,7 @@ export class SqliteStore implements Store {
 
   private project(ev: AgentSpaceEvent, now: number): void {
     const s = this.s;
-    const isLlm = ev.type === "llm.call";
-    const usage = {
-      tokens_in: isLlm ? (ev.tokens_in ?? 0) : 0,
-      tokens_out: isLlm ? (ev.tokens_out ?? 0) : 0,
-      cost_usd: isLlm ? (ev.cost_usd ?? 0) : 0,
-    };
+    const usage = usageOf(ev);
     const run = { workspace: ev.workspace, run_id: ev.run_id };
     s.ensureRun.run({ ...run, ts: ev.ts, now, ...usage });
 
@@ -273,7 +281,7 @@ export class SqliteStore implements Store {
       run_id: ev.run_id,
       team_id: ev.team_id,
       summary: ev.summary ?? null,
-      model: isLlm ? (ev.model ?? null) : null,
+      model: ev.type === "llm.call" ? (ev.model ?? null) : null,
       ...usage,
     });
   }
@@ -420,6 +428,27 @@ export function controlEvent(workspace: string, runId: string, action: ControlAc
     summary: `${verb}${by ? ` by ${by}` : ""}`.slice(0, 500),
     data: { action, ...(by ? { by: by.slice(0, 256) } : {}) },
   } as AgentSpaceEvent;
+}
+
+// ---------------- projection rules ----------------
+
+/**
+ * What an event adds to its agent's and run's totals. Only `llm.call` counts (the totals rule).
+ * Must match `usageOf` in web/lib/projector.ts (shared fixture: projection.expected.json).
+ */
+export function usageOf(ev: AgentSpaceEvent) {
+  if (ev.type !== "llm.call") return { tokens_in: 0, tokens_out: 0, cost_usd: 0, cost_estimated_usd: 0, unpriced_calls: 0 };
+  const tokensIn = ev.tokens_in ?? 0;
+  const tokensOut = ev.tokens_out ?? 0;
+  const cost = ev.cost_usd ?? 0;
+  return {
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    cost_usd: cost,
+    cost_estimated_usd: ev.cost_source === "estimated" ? cost : 0,
+    // Tokens but no cost from anyone: the model isn't in the price table.
+    unpriced_calls: tokensIn + tokensOut > 0 && ev.cost_usd === undefined && ev.cost_source === undefined ? 1 : 0,
+  };
 }
 
 // ---------------- row mapping ----------------

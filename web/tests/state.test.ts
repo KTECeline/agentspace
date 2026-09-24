@@ -18,6 +18,8 @@ const agent = (id: string, team: string | null, name = id): AgentState => ({
   tokens_in: 0,
   tokens_out: 0,
   cost_usd: 0,
+  cost_estimated_usd: 0,
+  unpriced_calls: 0,
   model: null,
 });
 

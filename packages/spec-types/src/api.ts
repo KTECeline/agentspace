@@ -22,7 +22,12 @@ export interface AgentState {
   current_run_id: string | null;
   tokens_in: number;
   tokens_out: number;
+  /** Total cost of the agent's `llm.call` events, reported and estimated together. */
   cost_usd: number;
+  /** The part of `cost_usd` the collector estimated from its price table (D-037). */
+  cost_estimated_usd: number;
+  /** `llm.call` events with tokens whose model has no price (so they add $0). */
+  unpriced_calls: number;
   model: string | null;
 }
 
@@ -44,6 +49,8 @@ export interface RunState {
   tokens_in: number;
   tokens_out: number;
   cost_usd: number;
+  cost_estimated_usd: number;
+  unpriced_calls: number;
   control: RunControl;
 }
 
