@@ -2,6 +2,7 @@
 
     uv run python main.py            # real Claude (needs ANTHROPIC_API_KEY)
     uv run python main.py --fake     # scripted model, no API key, no network
+    uv run python main.py --fake --approve   # the Engineer asks you before writing files
 
 The only AgentSpace code is the two lines marked below.
 """
@@ -35,7 +36,7 @@ MAX_TOOL_STEPS = 8
 # ---------------------------------------------------------------------------
 
 
-def make_tools(workdir: Path) -> dict[str, BaseTool]:
+def make_tools(workdir: Path, approve: bool = False) -> dict[str, BaseTool]:
     def safe(path: str) -> Path:
         target = (workdir / path).resolve()
         if workdir.resolve() not in target.parents:
@@ -55,6 +56,17 @@ def make_tools(workdir: Path) -> dict[str, BaseTool]:
     @tool
     def write_file(path: str, content: str) -> str:
         """Overwrite a file in the project with new content."""
+        if approve:
+            # Optional: a person approves the change in the office first. Fails closed: if
+            # nobody approves in time (or AgentSpace is down), the file is not written.
+            from agentspace.adapters.langgraph import request_approval_sync
+
+            decision = request_approval_sync(
+                f"Write {path}?", {"path": path, "content": content}, timeout=600
+            )
+            if not decision.approved:
+                why = decision.comment or decision.error or decision.decision
+                return f"ERROR: not approved ({why}). Do not retry; explain what you'd change."
         safe(path).write_text(content)
         return f"wrote {len(content)} bytes to {path}"
 
@@ -191,6 +203,9 @@ def main() -> int:
     parser.add_argument("--fake", action="store_true", help="use a scripted model (no API key)")
     parser.add_argument("--runs", type=int, default=1, help="how many runs (0 = forever)")
     parser.add_argument("--latency", type=float, default=0.8, help="fake model delay, seconds")
+    parser.add_argument(
+        "--approve", action="store_true", help="ask a person in the office before writing files"
+    )
     args = parser.parse_args()
 
     if not args.fake and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -207,7 +222,7 @@ def main() -> int:
             for f in (HERE / "demo_app").glob("*.py"):
                 shutil.copy(f, workdir)
             llm = fake_model(args.latency) if args.fake else real_model()
-            graph = build_graph(llm, make_tools(workdir))
+            graph = build_graph(llm, make_tools(workdir, approve=args.approve))
             t0 = time.monotonic()
             result = graph.invoke(
                 {"bug_report": "Cart total is wrong: two items priced 2.50x2 and 1.00x3 give 3.0, expected 8.0."},
@@ -217,6 +232,9 @@ def main() -> int:
                 },
             )
             print(f"run {n}: {result.get('fix_summary', 'no fix')} ({time.monotonic() - t0:.1f}s)")
+        except agentspace.Cancelled:
+            print(f"run {n}: cancelled from the office")
+            break
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
 

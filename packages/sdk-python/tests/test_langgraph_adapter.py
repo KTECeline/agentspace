@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import FakeCollector, assert_valid_events, init_fast
+from conftest import FakeCollector, approve_when_requested, assert_valid_events, init_fast
 from jsonschema import Draft202012Validator
 from lg_app import build
 
@@ -206,3 +206,33 @@ def test_pause_blocks_sync_graph_until_resumed(collector: FakeCollector) -> None
     assert blocked and blocked[0]["agent_id"] == "triage"
     assert [e["data"]["status"] for e in events if e["type"] == "run.finished"] == ["ok"]
     assert [e for e in events if e["agent_id"] == "engineer"]  # carried on after resume
+
+
+def test_request_approval_inside_a_tool_is_attached_to_the_node(collector: FakeCollector) -> None:
+    from langchain_core.tools import tool
+
+    from agentspace.adapters import langgraph as lg
+
+    results: list[Any] = []
+
+    @tool
+    def deploy(env: str) -> str:
+        """Deploy somewhere."""
+        r = lg.request_approval_sync(f"Deploy to {env}?", {"env": env}, timeout=10)
+        results.append(r)
+        return r.decision
+
+    init_fast(collector.url)
+    approve_when_requested(collector, "approved")
+
+    def on_node(name: str) -> None:
+        if name == "triage":
+            deploy.invoke({"env": "prod"})
+
+    build(on_node=on_node).invoke({"bug": "x"})
+    agentspace.flush()
+    assert results[0].approved
+    (req,) = collector.of_type("approval.requested")
+    started = collector.of_type("run.started")[0]
+    assert req["run_id"] == started["run_id"]
+    assert (req["agent_id"], req["team_id"]) == ("triage", "dev-team")

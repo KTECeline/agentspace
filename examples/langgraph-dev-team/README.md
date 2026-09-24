@@ -28,6 +28,7 @@ uv run python main.py
 | Flag | Meaning |
 |---|---|
 | `--fake` | Use the scripted model in `scripted.py`. It's deterministic and free. |
+| `--approve` | The Engineer asks you in the office (Approvals tab) before writing a file. Rejected or timed out means the file isn't written. |
 | `--runs N` | Run N times (`0` = forever, handy for a live demo). |
 | `--latency S` | Delay per fake model call, so the office has time to animate (default 0.8 s). |
 

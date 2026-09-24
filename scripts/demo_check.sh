@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Done-check (Phases 1-2):
+# Done-check (Phases 1-4a):
 #   1. docker compose up: collector + web are healthy
 #   2. the web image serves the office, the /demo page and its bundled recording
 #   3. the example's agents show up in the collector live
-#   4. killing the collector mid-run does NOT crash the example (exit code 0)
+#   4. approvals and pause / resume / cancel work end to end (scripts/controls_check.sh)
+#   5. killing the collector mid-run does NOT crash the example (exit code 0)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -54,6 +55,9 @@ for _ in $(seq 1 40); do
 done
 [ "$m" -ge 3 ] || { echo "FAIL: OTLP agents did not appear"; exit 1; }
 echo "ok: router, researcher, writer arrived over OTLP"
+
+step "Approvals and run controls"
+AGENTSPACE_URL="$COLLECTOR" scripts/controls_check.sh
 
 step "Killing the collector mid-run"
 docker compose kill collector >/dev/null

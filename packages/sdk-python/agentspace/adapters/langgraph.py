@@ -43,7 +43,8 @@ from langchain_core.callbacks import BaseCallbackHandler
 from agentspace import _api
 from agentspace._client import AgentInfo
 from agentspace._context import current_run
-from agentspace._control import Cancelled, adapter_checkpoint
+from agentspace._control import ApprovalResult, Cancelled, adapter_checkpoint
+from agentspace._control import request_approval_sync as _request_approval_sync
 from agentspace._log import internal_error
 from agentspace._util import slugify, truncate
 
@@ -614,6 +615,41 @@ def instrument(client: Client | None = None) -> bool:
     _hook_var = ContextVar("agentspace_langchain_handler", default=_handler)
     register_configure_hook(_hook_var, True)
     return True
+
+
+def current_context() -> tuple[str, str | None, str | None] | None:
+    """``(run_id, agent_id, team_id)`` of the node / tool running now, or None.
+
+    Works inside graph nodes and tools (LangChain keeps the active config in a contextvar).
+    """
+    try:
+        from langchain_core.runnables.config import var_child_runnable_config
+
+        config = var_child_runnable_config.get() or {}
+        manager = config.get("callbacks")
+        parent = getattr(manager, "parent_run_id", None)
+        handler = _handler
+        node = handler._nodes.get(parent) if handler and parent else None
+        if node is None:
+            return None
+        return node.run.run_id, node.agent_id, node.run.team_id if node.agent_id else None
+    except Exception as exc:
+        internal_error("langgraph.current_context", exc)
+        return None
+
+
+def request_approval_sync(
+    reason: str, payload: Any = None, *, timeout: float = 300.0
+) -> ApprovalResult:
+    """:func:`agentspace.request_approval_sync` for code inside a graph node or tool: the
+    approval is attached to that node's agent and run. Fails closed like the original."""
+    ctx = current_context()
+    if ctx is None:
+        return _request_approval_sync(reason, payload, timeout=timeout)
+    run_id, agent_id, team_id = ctx
+    return _request_approval_sync(
+        reason, payload, timeout=timeout, run_id=run_id, agent_id=agent_id, team_id=team_id
+    )
 
 
 def get_handler() -> AgentSpaceCallbackHandler:
