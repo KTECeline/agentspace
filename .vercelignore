@@ -1,0 +1,17 @@
+# The public demo (web/) never needs these. Belt and braces: they're also in .gitignore.
+.env
+.env.*
+!.env.example
+**/.env
+**/*.pem
+**/*.crt
+**/*.key
+**/*.db
+**/*.db-*
+**/data/
+**/.venv/
+**/node_modules/
+**/.next/
+**/__pycache__/
+examples/
+bench/results/

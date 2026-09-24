@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
+import { collectorPagesAllowed } from "@/lib/publicDemo";
 import { Dashboard } from "@/components/dashboard/Dashboard";
 
 export const metadata: Metadata = {
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
 /** Same `?collector=` and `?workspace=` parameters as the office. */
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   await connection();
+  collectorPagesAllowed();
   const params = await searchParams;
   const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const collectorUrl = pick(params.collector) ?? process.env.AGENTSPACE_PUBLIC_URL ?? "http://localhost:4800";

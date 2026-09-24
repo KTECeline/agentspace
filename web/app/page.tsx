@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { collectorPagesAllowed } from "@/lib/publicDemo";
 import { OfficeApp } from "@/components/OfficeApp";
 
 /**
@@ -7,6 +8,7 @@ import { OfficeApp } from "@/components/OfficeApp";
  */
 export default async function Page({ searchParams }: PageProps<"/">) {
   await connection();
+  collectorPagesAllowed();
   const params = await searchParams;
   const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const collectorUrl = pick(params.collector) ?? process.env.AGENTSPACE_PUBLIC_URL ?? "http://localhost:4800";

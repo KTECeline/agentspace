@@ -312,3 +312,13 @@ What broke and what changed:
 - `/demo` recordings use the same player (the old timer-based recorded source is gone). Recordings are shifted to start "now"; stored runs keep their real timestamps.
 
 **Why:** one projection path (the one the collector's fixture already checks) is simpler and more trustworthy than a second, reversible state machine.
+
+## D-041 · The public demo is read-only replay, enforced in layers (2026-09-25)
+**Decision:** the hosted demo (Vercel) serves only `/demo` (bundled recordings), `/docs` and static files.
+- **Nothing to leak:** the deployment has no environment variables (no keys, no collector URL). The web app has no API routes, server actions or middleware. Approve, pause, cancel and ingest exist only on the collector, which isn't deployed.
+- **Edge redirects** (`web/vercel.json`): `/`, `/dashboard` and `/replay` (the pages that talk to a collector) redirect to `/demo`, whatever the query string (`?collector=` included).
+- **The browser can't reach a collector:** a Content-Security-Policy with `connect-src 'self'`, plus `frame-ancestors 'none'`, `form-action 'none'`, `base-uri 'self'`, `object-src 'none'`, nosniff, a strict referrer policy and HSTS. It's set in `vercel.json` and, for any host, by `AGENTSPACE_PUBLIC_DEMO=1` at build time (`next.config.ts`). The same flag also makes the pages redirect themselves (`lib/publicDemo.ts`).
+- **Uploads:** `.vercelignore` keeps `.env*`, certificates, databases, virtualenvs and build output out of any CLI deploy.
+- **Verified:** `scripts/check_public_demo.sh <url>` checks the redirects, the pages, the CSP, that write and API routes don't exist, and that the page, its scripts and the recordings contain no keys or personal data. Locally (demo-mode production build) it passes. In the browser, `fetch` and `WebSocket` to any other origin fire `securitypolicyviolation` events and fail, while same-origin recordings load.
+
+**Why:** a public URL mustn't become a way to reach anyone's collector, and it mustn't depend on one setting being right: each layer holds on its own.
