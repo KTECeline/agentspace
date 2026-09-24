@@ -235,7 +235,7 @@ Plan approved 2026-09-25: Vercel for the docs and demo, docs as a `/docs` route 
 - collector 60
 - web 62
 
-CI has 19 jobs, including the secret scan and the Docker build.
+CI has 15 jobs, including the secret scan and the Docker build.
 
 ### Waiting on the user (see docs/LAUNCH.md)
 - The hands-on test of Phases 4 and 5 (`docs/launch/manual-test.md`).
