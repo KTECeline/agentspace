@@ -8,7 +8,9 @@ cd examples/claude-agent-sdk-support
 uv run python main.py --replay --runs 0 # recorded session, no key or CLI; open http://localhost:4801
 ```
 
-For a real run you need `ANTHROPIC_API_KEY` in `.env` and the Claude Code CLI installed. Then run `uv run python main.py` and answer the refund prompt in the terminal.
+For a real run you need the Claude Code CLI, and a key in `.env`: either `OPENROUTER_API_KEY` (preferred; OpenRouter exposes an Anthropic-compatible API that Claude Code calls directly) or `ANTHROPIC_API_KEY`. Then run `uv run python main.py` and answer the refund prompt in the terminal.
+
+Real runs are capped: Haiku by default, at most 6 turns, and `--budget 0.10` USD.
 
 ## The AgentSpace part
 
