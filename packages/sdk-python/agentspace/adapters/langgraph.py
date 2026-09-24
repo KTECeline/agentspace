@@ -20,6 +20,10 @@ Per-call config: ``config={"metadata": {"agentspace_team": "engineering"}}`` set
 (the office zone). Otherwise the team is the graph's name. ``agentspace_agents`` can map node
 names to display names, e.g. ``{"qa": "QA Engineer"}``.
 
+Controls: an operator's cancel raises ``agentspace.Cancelled`` at the next node, model or
+tool start (the run finishes as "cancelled"). Pause blocks there too for sync graphs; async
+graphs pause at an ``await agentspace.acheckpoint()`` inside a node.
+
 Python 3.10 + async graphs: LangGraph can't propagate callbacks into model/tool calls made
 inside nodes unless the node accepts ``config`` and passes it on (``llm.invoke(x, config)``).
 Node/agent/handoff events still work. Python 3.11+ has no such limitation.
@@ -39,6 +43,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from agentspace import _api
 from agentspace._client import AgentInfo
 from agentspace._context import current_run
+from agentspace._control import Cancelled, adapter_checkpoint
 from agentspace._log import internal_error
 from agentspace._util import slugify, truncate
 
@@ -122,6 +127,12 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
                 {"status": status, "detail": truncate(detail, 500) if detail else None},
             )
 
+    @staticmethod
+    def _checkpoint(parent: _Node) -> None:
+        """A safe point: blocks while paused, raises Cancelled once cancelled."""
+        team = parent.run.team_id if parent.agent_id else None
+        adapter_checkpoint(parent.run.run_id, parent.agent_id, team)
+
     def _content(self, field_name: str, value: Any) -> Any:
         client = self._client()
         return client.content(field_name, value) if client else None
@@ -153,6 +164,8 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
 
             node_name = metadata.get("langgraph_node")
             if node_name and name == node_name and node_name not in _IGNORED_NODES:
+                agent_id = slugify(str(node_name))
+                adapter_checkpoint(parent.run.run_id, agent_id, parent.run.team_id)  # may raise
                 self._start_agent(client, run_id, parent, str(node_name))
                 return
 
@@ -266,7 +279,8 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         if node is None or self._client() is None:
             return
         bubbling = error is not None and _is_bubble_up(error)
-        failed = error is not None and not bubbling
+        cancelled = isinstance(error, Cancelled)
+        failed = error is not None and not bubbling and not cancelled
         duration = round((time.monotonic() - node.t0) * 1000, 1)
 
         if node.kind == "agent":
@@ -279,20 +293,28 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
                 {
                     "step_id": node.step_id,
                     "name": node.name or "",
-                    "ok": not failed,
+                    "ok": error is None or bubbling,
                     "duration_ms": duration,
-                    "error": truncate(repr(error), 2000) if failed else None,
+                    "error": "cancelled"
+                    if cancelled
+                    else truncate(repr(error), 2000)
+                    if failed
+                    else None,
                 },
                 parent_id=node.parent_step,
             )
             if failed:
                 self._status(node, "error", str(error))
+            elif cancelled:
+                self._status(node, "done", "cancelled by an operator")
             elif bubbling:
                 self._status(node, "waiting_human" if _is_interrupt(error) else "waiting")
             else:
                 self._status(node, "idle")
         elif node.kind == "root":
-            self._finish_root(node, outputs, error if failed else None, duration, bubbling)
+            self._finish_root(
+                node, outputs, error if failed else None, duration, bubbling, cancelled
+            )
 
     def _finish_root(
         self,
@@ -301,6 +323,7 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         error: BaseException | None,
         duration: float,
         interrupted: bool,
+        cancelled: bool = False,
     ) -> None:
         run = node.run
         # Clean up any children left behind (e.g. the graph was cancelled mid-node).
@@ -310,11 +333,12 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         if interrupted:
             return  # the run resumes later; don't mark agents done
         final = "error" if error else "done"
+        detail = "cancelled by an operator" if cancelled else None
         for agent_id in sorted(run.agents):
             self._emit(
                 node,
                 "agent.status",
-                {"status": final},
+                {"status": final, "detail": detail},
                 agent_id=agent_id,
                 team_id=run.team_id,
                 parent_id=None,
@@ -337,7 +361,7 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         client.emit(
             "run.finished",
             {
-                "status": "error" if error else "ok",
+                "status": "cancelled" if cancelled else "error" if error else "ok",
                 "duration_ms": duration,
                 "output": client.content("run.output", outputs),
             },
@@ -392,6 +416,7 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         parent = self._parent(parent_run_id)
         if parent is None:
             return
+        self._checkpoint(parent)
         metadata = metadata or {}
         params = kwargs.get("invocation_params") or {}
         model = metadata.get("ls_model_name") or params.get("model") or params.get("model_name")
@@ -489,6 +514,7 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
             parent = self._parent(parent_run_id)
             if parent is None:
                 return
+            self._checkpoint(parent)
             tool_name = str(kwargs.get("name") or (serialized or {}).get("name") or "tool")
             call_id = str(kwargs.get("tool_call_id") or run_id.hex)
             node = _Node(

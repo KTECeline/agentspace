@@ -251,14 +251,22 @@ def is_cancelled(run_id: str | None = None) -> bool:
     return bool(client and rid and client.controls.get(rid) == "cancelled")
 
 
-def _cancelled(client: Client, rid: str) -> bool:
-    """Handle a cancel. Returns False in flag mode; raises in raise mode."""
+def _show(status: str, detail: str | None, who: dict[str, Any] | None) -> None:
+    """Set the status of the given agent, or of the current one; no-op without an agent."""
     from agentspace import _api
     from agentspace._context import current_agent
 
-    if rid not in client.cancel_announced and current_agent.get() is not None:
+    if who and who.get("agent_id"):
+        _api.set_status(status, detail, **who)  # type: ignore[arg-type]
+    elif current_agent.get() is not None:
+        _api.set_status(status, detail)  # type: ignore[arg-type]
+
+
+def _cancelled(client: Client, rid: str, who: dict[str, Any] | None = None) -> bool:
+    """Handle a cancel. Returns False in flag mode; raises in raise mode."""
+    if rid not in client.cancel_announced:
         client.cancel_announced.add(rid)
-        _api.set_status("done", "cancelled by an operator")
+        _show("done", "cancelled by an operator", who)
     if client.config.cancel_mode == "raise":
         raise Cancelled(rid)
     return False
@@ -286,17 +294,23 @@ def checkpoint(run_id: str | None = None) -> bool:
     rid = _run_id(client, run_id)
     if not rid:
         return True
+    return _checkpoint(client, rid, None)
+
+
+def _checkpoint(client: Client, rid: str, who: dict[str, Any] | None) -> bool:
     state = client.controls.get(rid)
     if state == "cancelled":
-        return _cancelled(client, rid)
+        return _cancelled(client, rid, who)
     if state == "paused":
-        _wait_while_paused(client, rid)
+        _wait_while_paused(client, rid, who)
         if client.controls.get(rid) == "cancelled":
-            return _cancelled(client, rid)
+            return _cancelled(client, rid, who)
     return True
 
 
-def adapter_checkpoint(run_id: str) -> bool:
+def adapter_checkpoint(
+    run_id: str, agent_id: str | None = None, team_id: str | None = None
+) -> bool:
     """Checkpoint from inside a framework callback. Cancel works everywhere. Pausing blocks
     only when the callback runs off the event loop: blocking an event loop would freeze
     everything else, so async code pauses at ``await acheckpoint()`` (or an async adapter hook).
@@ -313,7 +327,23 @@ def adapter_checkpoint(run_id: str) -> bool:
             "the next `await agentspace.acheckpoint()` or async adapter hook",
         )
         return True
-    return checkpoint(run_id)
+    who = {"run_id": run_id, "agent_id": agent_id, "team_id": team_id} if agent_id else None
+    return _checkpoint(client, run_id, who)
+
+
+async def adapter_acheckpoint(
+    run_id: str, agent_id: str | None = None, team_id: str | None = None
+) -> bool:
+    """Async :func:`adapter_checkpoint` for async framework hooks: pausing waits in a thread."""
+    from agentspace import _api
+
+    client = _api.get_client()
+    if client is None or client.transport is None:
+        return True
+    who = {"run_id": run_id, "agent_id": agent_id, "team_id": team_id} if agent_id else None
+    if client.controls.get(run_id) == "paused":
+        await asyncio.to_thread(_wait_while_paused, client, run_id, who)
+    return _checkpoint(client, run_id, who)
 
 
 def _on_event_loop() -> bool:
@@ -337,10 +367,8 @@ async def acheckpoint(run_id: str | None = None) -> bool:
     return checkpoint(rid)
 
 
-def _wait_while_paused(client: Client, rid: str) -> None:
-    from agentspace import _api
-
-    _api.set_status("blocked", "paused by an operator")
+def _wait_while_paused(client: Client, rid: str, who: dict[str, Any] | None = None) -> None:
+    _show("blocked", "paused by an operator", who)
     logger.info("agentspace: run %s paused by an operator; waiting to resume", rid)
     run = urllib.parse.quote(rid, safe="")
     path = f"/v1/workspaces/{_ws(client)}/controls?runs={run}&wait={POLL_WAIT_S}"
@@ -359,4 +387,4 @@ def _wait_while_paused(client: Client, rid: str) -> None:
             )
         time.sleep(2.0)
     if client.controls.get(rid) != "cancelled":
-        _api.set_status("thinking", "resumed")
+        _show("thinking", "resumed", who)

@@ -33,7 +33,10 @@ def _usage(i: int, o: int) -> dict[str, int]:
     return {"input_tokens": i, "output_tokens": o, "total_tokens": i + o}
 
 
-def build(fail_in: str | None = None) -> Any:
+def build(fail_in: str | None = None, on_node: Any = None) -> Any:
+    """``on_node(name)`` runs at the start of each node (tests use it to flush)."""
+    hook = on_node or (lambda name: None)
+
     llm = FakeMessagesListChatModel(
         responses=[
             AIMessage(content="Route to triage.", usage_metadata=_usage(120, 8)),
@@ -47,10 +50,12 @@ def build(fail_in: str | None = None) -> Any:
     )
 
     def manager(state: State) -> State:
+        hook("manager")
         llm.invoke(f"Who should handle: {state['bug']}")
         return {"route": "triage"}
 
     def triage(state: State) -> State:
+        hook("triage")
         if fail_in == "triage":
             raise RuntimeError("triage crashed")
         llm.invoke("Diagnose")

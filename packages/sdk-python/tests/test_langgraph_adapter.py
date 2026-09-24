@@ -145,3 +145,64 @@ def test_handler_state_is_cleaned_up(collector: FakeCollector) -> None:
 
     run_graph(collector)
     assert lg._handler is not None and lg._handler._nodes == {}
+
+
+# ---------------- pause / cancel ----------------
+
+
+def _control_on_triage(action: str) -> Any:
+    def auto(e: dict[str, Any]) -> str | None:
+        hit = e["type"] == "step.started" and e["agent_id"] == "triage"
+        return action if hit else None
+
+    return auto
+
+
+def _flush_in_triage(name: str) -> None:
+    if name == "triage":
+        assert agentspace.flush()  # the ingest response carries the control
+
+
+def test_cancel_stops_graph_at_next_safe_point(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    init_fast(collector.url)
+    collector.auto_control = _control_on_triage("cancelled")
+    with pytest.raises(agentspace.Cancelled):
+        build(on_node=_flush_in_triage).invoke({"bug": "x"})
+    agentspace.flush()
+    events = collector.events
+    assert_valid_events(validator, events)
+    assert not [e for e in events if e["type"] == "error"]
+    assert [e["data"]["status"] for e in events if e["type"] == "run.finished"] == ["cancelled"]
+    # triage's model call never happened, and the engineer never started
+    assert not [e for e in events if e["type"] == "llm.call" and e["agent_id"] == "triage"]
+    assert not [e for e in events if e["agent_id"] == "engineer"]
+    triage = [e for e in events if e["type"] == "step.finished" and e["data"]["name"] == "triage"]
+    assert triage[-1]["data"]["error"] == "cancelled"
+    last = [e["data"] for e in events if e["type"] == "agent.status"][-1]
+    assert last["status"] == "done" and "cancelled" in (last["detail"] or "")
+
+
+def test_pause_blocks_sync_graph_until_resumed(collector: FakeCollector) -> None:
+    import threading
+
+    init_fast(collector.url)
+    collector.auto_control = _control_on_triage("paused")
+
+    def flush_and_resume(name: str) -> None:
+        if name == "triage":
+            _flush_in_triage(name)
+            collector.auto_control = None
+            run_id = collector.events[0]["run_id"]
+            threading.Timer(0.3, lambda: collector.controls.pop(run_id)).start()
+
+    build(on_node=flush_and_resume).invoke({"bug": "x"})
+    agentspace.flush()
+    events = collector.events
+    blocked = [
+        e for e in events if e["type"] == "agent.status" and e["data"]["status"] == "blocked"
+    ]
+    assert blocked and blocked[0]["agent_id"] == "triage"
+    assert [e["data"]["status"] for e in events if e["type"] == "run.finished"] == ["ok"]
+    assert [e for e in events if e["agent_id"] == "engineer"]  # carried on after resume

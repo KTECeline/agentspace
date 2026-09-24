@@ -177,11 +177,21 @@ def _short(text: str | None, limit: int = 500) -> str | None:
 class _Scope:
     #: Scopes that are a safe point to pause or cancel (agents and steps; not the run itself).
     _checkpoint = False
+    #: Checkpoint after starting (inside the scope) instead of before. Agents do this so a
+    #: pause shows on their own desk; a cancel then closes the scope before re-raising.
+    _checkpoint_inside = False
 
     def __enter__(self: S) -> S:
-        if self._checkpoint:
+        if self._checkpoint and not self._checkpoint_inside:
             checkpoint()  # may block (paused) or raise Cancelled; both on purpose
-        return self._enter()
+        self._enter()
+        if self._checkpoint_inside:
+            try:
+                checkpoint()
+            except BaseException as exc:
+                self.__exit__(type(exc), exc, exc.__traceback__)
+                raise
+        return self
 
     def _enter(self: S) -> S:
         try:
@@ -203,9 +213,16 @@ class _Scope:
         return False  # never swallow user exceptions
 
     async def __aenter__(self: S) -> S:
-        if self._checkpoint:
+        if self._checkpoint and not self._checkpoint_inside:
             await acheckpoint()  # pausing waits in a thread, not on the event loop
-        return self._enter()
+        self._enter()
+        if self._checkpoint_inside:
+            try:
+                await acheckpoint()
+            except BaseException as exc:
+                self.__exit__(type(exc), exc, exc.__traceback__)
+                raise
+        return self
 
     async def __aexit__(
         self,
@@ -339,6 +356,7 @@ class _AgentScope(_Scope):
     """Makes an agent the "current agent": registers it, opens an agent step, and tracks status."""
 
     _checkpoint = True
+    _checkpoint_inside = True
 
     def __init__(
         self,

@@ -56,6 +56,8 @@ class FakeCollector:
         self.controls: dict[str, str] = {}
         self.approval_status_override: int | None = None
         self.closing = False
+        #: Called per ingested event; may return a control ("paused"/"cancelled") for its run.
+        self.auto_control: Any = None
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -78,6 +80,8 @@ class FakeCollector:
                 runs = set()
                 for e in events:
                     runs.add(e["run_id"])
+                    if outer.auto_control and (action := outer.auto_control(e)):
+                        outer.controls[e["run_id"]] = action
                     if e["type"] == "approval.requested":
                         outer.approvals[e["data"]["approval_id"]] = {"status": "pending"}
                 controls = {r: outer.controls[r] for r in runs if r in outer.controls}
