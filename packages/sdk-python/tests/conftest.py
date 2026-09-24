@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +38,6 @@ def assert_valid_events(validator: Draft202012Validator, events: list[dict[str, 
 # ---------------------------------------------------------------------------
 
 import socket  # noqa: E402
-import threading  # noqa: E402
-import time  # noqa: E402
 import urllib.parse  # noqa: E402
 from collections.abc import Iterator  # noqa: E402
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
@@ -178,3 +178,17 @@ def init_fast(url: str, **kw: Any) -> None:
     """init() with a short flush interval so tests run quickly."""
     kw.setdefault("flush_interval", 0.02)
     agentspace.init(url=url, **kw)
+
+
+def approve_when_requested(
+    c: FakeCollector, decision: str = "approved", comment: str | None = None, delay: float = 0.1
+) -> threading.Thread:
+    def run() -> None:
+        c.wait_for(lambda evs: any(e["type"] == "approval.requested" for e in evs))
+        time.sleep(delay)
+        aid = c.of_type("approval.requested")[-1]["data"]["approval_id"]
+        c.resolve(aid, decision, comment)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t

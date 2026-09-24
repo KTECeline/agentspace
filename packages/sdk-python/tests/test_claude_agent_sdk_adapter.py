@@ -11,7 +11,7 @@ import pytest
 
 pytest.importorskip("claude_agent_sdk")
 
-from conftest import FakeCollector, assert_valid_events, init_fast
+from conftest import FakeCollector, approve_when_requested, assert_valid_events, init_fast
 from jsonschema import Draft202012Validator
 
 import agentspace
@@ -200,3 +200,93 @@ def test_split_assistant_messages_are_merged(collector: FakeCollector) -> None:
     (llm,) = [e for e in collector.events if e["type"] == "llm.call"]
     assert (llm["tokens_in"], llm["tokens_out"]) == (3700, 58)
     assert llm["summary"] == "chose tool: Agent"
+
+
+# ---------------- controls and approvals ----------------
+
+
+def _pre_tool(tracker: cas.ClaudeAgentTracker, session: str = "s1") -> dict[str, Any]:
+    callback = tracker.hooks()["PreToolUse"][0].hooks[0]
+    data = {"session_id": session, "tool_name": "Bash", "tool_input": {"command": "ls"}}
+    return asyncio.run(callback(data, "t1", None))
+
+
+def _start(tracker: cas.ClaudeAgentTracker, session: str = "s1") -> None:
+    tracker.handle("UserPromptSubmit", {"session_id": session, "prompt": "hi"})
+
+
+def test_pre_tool_use_hook_has_a_long_timeout_for_pauses() -> None:
+    hooks = cas.ClaudeAgentTracker("Support").hooks()
+    assert hooks["PreToolUse"][0].timeout == cas.PAUSE_HOOK_TIMEOUT_S
+    assert hooks["Stop"][0].timeout is None
+
+
+def test_cancel_denies_the_tool_and_stops_the_session(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    init_fast(collector.url)
+    tracker = cas.ClaudeAgentTracker("Support", team="Desk")
+    _start(tracker)
+    assert _pre_tool(tracker) == {}  # running: no change
+    collector.controls["s1"] = "cancelled"
+    assert agentspace.flush()
+    agentspace.emit("message", {}, run_id="s1")
+    assert agentspace.flush()  # the ingest response carries the control
+    out = _pre_tool(tracker)
+    assert out["continue_"] is False
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    tracker.handle("Stop", {"session_id": "s1"})
+    agentspace.flush()
+    assert_valid_events(validator, collector.events)
+    finished = collector.of_type("run.finished")
+    assert finished[-1]["data"]["status"] == "cancelled"
+    last = collector.of_type("agent.status")[-1]["data"]
+    assert last["status"] == "done" and "cancelled" in last["detail"]
+
+
+def test_pause_holds_the_tool_until_resumed(collector: FakeCollector) -> None:
+    import threading
+
+    init_fast(collector.url)
+    tracker = cas.ClaudeAgentTracker("Support")
+    _start(tracker)
+    collector.controls["s1"] = "paused"
+    agentspace.emit("message", {}, run_id="s1")
+    assert agentspace.flush()
+    threading.Timer(0.3, lambda: collector.controls.pop("s1")).start()
+    assert _pre_tool(tracker) == {}
+    agentspace.flush()
+    statuses = [e["data"]["status"] for e in collector.of_type("agent.status")]
+    assert "blocked" in statuses
+
+
+def test_approval_callback_allows_after_approval(collector: FakeCollector) -> None:
+    from claude_agent_sdk import PermissionResultAllow, ToolPermissionContext
+
+    init_fast(collector.url)
+    tracker = cas.ClaudeAgentTracker("Support")
+    _start(tracker)
+    can_use_tool = cas.approval_callback({"Bash"}, timeout=10, tracker=tracker)
+    approve_when_requested(collector, "approved")
+    ctx = ToolPermissionContext(tool_use_id="t1", title="Support wants to run ls")
+    assert isinstance(
+        asyncio.run(can_use_tool("Bash", {"command": "ls"}, ctx)), PermissionResultAllow
+    )
+    agentspace.flush()
+    (req,) = collector.of_type("approval.requested")
+    assert req["run_id"] == "s1" and req["agent_id"] == "support"
+    assert req["data"]["reason"] == "Support wants to run ls"
+    # tools outside the list are allowed without asking
+    assert isinstance(asyncio.run(can_use_tool("Read", {}, ctx)), PermissionResultAllow)
+    assert len(collector.of_type("approval.requested")) == 1
+
+
+def test_approval_callback_fails_closed(collector: FakeCollector) -> None:
+    from claude_agent_sdk import PermissionResultDeny, ToolPermissionContext
+
+    init_fast(collector.url)
+    tracker = cas.ClaudeAgentTracker("Support")
+    _start(tracker)
+    can_use_tool = cas.approval_callback(timeout=0.5, tracker=tracker)
+    out = asyncio.run(can_use_tool("Bash", {}, ToolPermissionContext(tool_use_id="t1")))
+    assert isinstance(out, PermissionResultDeny) and "timeout" in out.message

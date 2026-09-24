@@ -8,25 +8,16 @@ import time
 from typing import Any
 
 import pytest
-from conftest import FakeCollector, assert_valid_events, free_port, init_fast
+from conftest import (
+    FakeCollector,
+    approve_when_requested,
+    assert_valid_events,
+    free_port,
+    init_fast,
+)
 from jsonschema import Draft202012Validator
 
 import agentspace
-
-
-def approve_when_requested(
-    c: FakeCollector, decision: str = "approved", comment: str | None = None, delay: float = 0.1
-) -> threading.Thread:
-    def run() -> None:
-        c.wait_for(lambda evs: any(e["type"] == "approval.requested" for e in evs))
-        time.sleep(delay)
-        aid = c.of_type("approval.requested")[-1]["data"]["approval_id"]
-        c.resolve(aid, decision, comment)
-
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
-    return t
-
 
 # ---------------- approvals ----------------
 

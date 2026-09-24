@@ -24,6 +24,14 @@ Mapping:
 - PermissionRequest / permission Notification -> waiting_human ("needs you")
 - AssistantMessage (via track)    -> llm.call with model and tokens
 - ResultMessage (via track)       -> session cost (an llm.call carrying only cost_usd)
+
+Controls: every PreToolUse is a safe point. While the run is paused the hook waits (off the
+event loop) before the tool runs; once it's cancelled the hook denies the tool and stops the
+session (``continue: false``), and the run finishes as "cancelled". Cancelling is final, so
+later prompts in the same session are stopped too.
+
+Approvals: ``ClaudeAgentOptions(can_use_tool=approval_callback())`` asks a person in the
+office before each tool call (or only the tools you list) and fails closed.
 """
 
 from __future__ import annotations
@@ -37,6 +45,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from agentspace import _api
 from agentspace._client import AgentInfo
+from agentspace._control import Cancelled, adapter_acheckpoint, request_approval
 from agentspace._log import internal_error
 from agentspace._util import slugify, truncate
 
@@ -44,6 +53,10 @@ if TYPE_CHECKING:
     from agentspace._client import Client
 
 T = TypeVar("T")
+
+#: How long a PreToolUse hook may wait while the run is paused (the SDK's default is 60 s).
+PAUSE_HOOK_TIMEOUT_S = 3600.0
+CANCELLED_REASON = "Cancelled by an operator in AgentSpace"
 
 SUBAGENT_TOOLS = {"Task", "Agent"}
 HOOK_EVENTS = (
@@ -175,7 +188,13 @@ class ClaudeAgentTracker:
         from claude_agent_sdk import HookMatcher
 
         return {
-            event: [HookMatcher(matcher=None, hooks=[self._callback(event)])]
+            event: [
+                HookMatcher(
+                    matcher=None,
+                    hooks=[self._callback(event)],
+                    timeout=PAUSE_HOOK_TIMEOUT_S if event == "PreToolUse" else None,
+                )
+            ]
             for event in HOOK_EVENTS
         }
 
@@ -183,14 +202,47 @@ class ClaudeAgentTracker:
         async def callback(
             input_data: Any, tool_use_id: str | None, context: Any
         ) -> dict[str, Any]:
+            data: dict[str, Any] = {}
             try:
-                self.handle(event, dict(input_data), tool_use_id)
+                data = dict(input_data)
+                self.handle(event, data, tool_use_id)
             except Exception as exc:
                 internal_error(f"claude_agent_sdk.{event}", exc)
+            if event == "PreToolUse":
+                return await self._gate(data)
             return {}  # never change the agent's behaviour
 
         callback.__name__ = f"agentspace_{event}"
         return callback
+
+    async def _gate(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Pause/cancel safe point before a tool runs. Only ever stops, never approves."""
+        if self._client() is None:
+            return {}
+        s = self._session(str(data.get("session_id") or "session"))
+        agent_id = self._agent_of(s, data)
+        try:
+            keep_going = await adapter_acheckpoint(s.run_id, agent_id, s.team_id)
+        except Cancelled:
+            keep_going = False
+        except Exception as exc:
+            internal_error("claude_agent_sdk.gate", exc)
+            return {}
+        if keep_going:
+            return {}
+        return {
+            "continue_": False,
+            "stopReason": CANCELLED_REASON,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": CANCELLED_REASON,
+            },
+        }
+
+    def _cancelled(self, s: _Session) -> bool:
+        client = self._client()
+        return bool(client and client.controls.get(s.run_id) == "cancelled")
 
     def handle(self, event: str, data: dict[str, Any], tool_use_id: str | None = None) -> None:
         """Process one hook payload. Public so recorded hook payloads can be replayed."""
@@ -379,12 +431,13 @@ class ClaudeAgentTracker:
                 s.main_id,
                 parent_id=None,
             )
+        cancelled = self._cancelled(s)
         for agent_id in sorted(s.agents):
-            self._status(s, agent_id, "done")
+            self._status(s, agent_id, "done", "cancelled by an operator" if cancelled else None)
         client.emit(
             "run.finished",
             {
-                "status": "ok",
+                "status": "cancelled" if cancelled else "ok",
                 "duration_ms": round((time.monotonic() - s.turn_t0) * 1000, 1)
                 if s.turn_t0
                 else None,
@@ -395,6 +448,11 @@ class ClaudeAgentTracker:
             parent_id=None,
         )
         s.turn_step = None
+
+    def latest_session(self) -> _Session | None:
+        """The most recently started session (``can_use_tool`` isn't told which one)."""
+        with self._lock:
+            return next(reversed(self._sessions.values()), None) if self._sessions else None
 
     def status(self, status: str, detail: str | None = None) -> None:
         """Set the main agent's status in the most recent session, e.g. ``waiting_human`` while
@@ -511,7 +569,8 @@ class ClaudeAgentTracker:
                 cost_usd=float(cost),
                 summary=f"session cost ${float(cost):.4f} ({getattr(msg, 'num_turns', '?')} turns)",
             )
-        failed = bool(getattr(msg, "is_error", False))
+        cancelled = self._cancelled(s)
+        failed = bool(getattr(msg, "is_error", False)) and not cancelled
         if failed:
             self._emit(
                 s,
@@ -536,18 +595,25 @@ class ClaudeAgentTracker:
                 self._emit(
                     s,
                     "step.finished",
-                    {"step_id": s.turn_step, "name": f"turn {s.turn}", "ok": not failed},
+                    {
+                        "step_id": s.turn_step,
+                        "name": f"turn {s.turn}",
+                        "ok": not failed and not cancelled,
+                    },
                     s.main_id,
                     parent_id=None,
                 )
                 for agent_id in sorted(s.agents):
                     self._status(
-                        s, agent_id, "error" if failed and agent_id == s.main_id else "done"
+                        s,
+                        agent_id,
+                        "error" if failed and agent_id == s.main_id else "done",
+                        "cancelled by an operator" if cancelled else None,
                     )
                 client.emit(
                     "run.finished",
                     {
-                        "status": "error" if failed else "ok",
+                        "status": "cancelled" if cancelled else "error" if failed else "ok",
                         "duration_ms": getattr(msg, "duration_ms", None),
                     },
                     run_id=s.run_id,
@@ -592,6 +658,53 @@ async def track(
     async for message in messages:
         t.observe(message)
         yield message
+
+
+def approval_callback(
+    tools: set[str] | list[str] | None = None,
+    *,
+    timeout: float = 300.0,
+    tracker: ClaudeAgentTracker | None = None,
+) -> Any:
+    """A ``can_use_tool`` callback that asks a person in the office to approve tool calls.
+
+    ``ClaudeAgentOptions(can_use_tool=approval_callback({"Bash", "Write"}))``. Tools not in
+    ``tools`` are allowed without asking (``None`` asks for every tool). Fails closed: a
+    rejection, timeout, or unreachable collector denies the call. Claude only asks
+    ``can_use_tool`` for calls your permission settings don't already allow.
+    """
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+
+    wanted = set(tools) if tools is not None else None
+
+    async def can_use_tool(tool_name: str, tool_input: dict[str, Any], context: Any) -> Any:
+        if wanted is not None and tool_name not in wanted:
+            return PermissionResultAllow()
+        t = tracker or _default
+        s = t.latest_session()
+        agent_id = team_id = run_id = None
+        if s is not None:
+            runtime = getattr(context, "agent_id", None)
+            agent_id = t._agent_of(s, {"agent_id": runtime}) if runtime else s.main_id
+            team_id, run_id = s.team_id, s.run_id
+        reason = getattr(context, "title", None) or f"{t.name} wants to use {tool_name}"
+        try:
+            result = await request_approval(
+                reason,
+                {"tool": tool_name, "input": tool_input},
+                timeout=timeout,
+                run_id=run_id,
+                agent_id=agent_id,
+                team_id=team_id,
+            )
+        except Cancelled:
+            return PermissionResultDeny(message=CANCELLED_REASON, interrupt=True)
+        if result.approved:
+            return PermissionResultAllow()
+        why = result.error or result.comment or f"{result.decision} in AgentSpace"
+        return PermissionResultDeny(message=f"Not approved: {why}")
+
+    return can_use_tool
 
 
 def tracker() -> ClaudeAgentTracker:
