@@ -89,7 +89,7 @@
 - The OTLP endpoint is on the collector's port 4800; the standard port 4318 isn't exposed yet.
 - Cost is still mostly $0. Only the Claude Agent SDK reports billed cost; price tables come in Phase 4.
 
-## Phase 4a: Store interface, auth, approvals, pause/cancel ✅ (2026-09-24, awaiting review)
+## Phase 4a: Store interface, auth, approvals, pause/cancel ✅ (2026-09-24; cleared to continue, hands-on test pending)
 
 **Done-check:** `scripts/controls_check.sh` passed against a local collector, both open and with an operator token. It covers:
 - the example's Engineer asks for approval, which is approved over REST, and the run finishes;
@@ -143,7 +143,7 @@ I also checked by hand in the browser against a live collector:
 - **Cancelling is final** for the run id. With the Claude Agent SDK, later prompts in the same session are stopped too.
 - **A small rendering glitch:** while the 3D scene mounts (about 1 s), the agent labels bunch up in the top-left corner. It isn't from this phase.
 
-## Phase 4b: Costs, dashboard, replay, examples ✅ (2026-09-24, awaiting review)
+## Phase 4b: Costs, dashboard, replay, examples ✅ (2026-09-24; cleared to continue, hands-on test pending)
 
 **Done-check:**
 - `scripts/cost_check.sh` passed against a local collector. It checks that:
@@ -196,3 +196,9 @@ I also checked by hand in the browser, against a local collector with ten days o
 - **Replay** of runs longer than 50,000 events shows only the first 50,000 (the page says so).
 - **The browser check was in an unfocused automation window.** There, `requestAnimationFrame` runs rarely, so the 3D canvas and the store's frame flush lag behind (the state was correct). Worth a look in a normal window. The dashboard wasn't checked at phone width (the window resize didn't take effect).
 - **A cancel that arrives during the last model call** lets that run finish (safe points only; seen with the OpenAI Agents example).
+
+## Phase 5: Benchmarks + launch (in progress)
+
+Plan approved 2026-09-25: Vercel for the docs and demo, docs as a `/docs` route in the Next app, and a video storyboard for the user to record. Additions from the user: a secret scan of the full history (and in CI), a personal-data audit of every recording, an explicitly verified read-only public demo, community files, a comparison table and an architecture diagram in the README, reproducible benchmarks, and a manual test script for Phases 4 and 5.
+
+- [x] **Secret scan** (2026-09-25): `gitleaks` 8.30.1 over the full history (55 commits): **no findings**. No `.env` file, certificate or key file has ever been committed, and no `sk-or-`/`sk-ant-` key appears in any revision. In the working tree it flags only ignored files: the root `.env` and Next build caches. CI now runs the same scan on every push (`secrets` job).
