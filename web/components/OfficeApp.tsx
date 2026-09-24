@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { Box, Eye, KeyRound, LayoutGrid, RefreshCw } from "lucide-react";
+import { Box, ChartColumn, Eye, KeyRound, LayoutGrid, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
 import { formatDuration, formatTokens } from "@/lib/format";
 import { latestRun } from "@/lib/state";
@@ -83,6 +83,15 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
         {scenario && <ScenarioPicker current={scenario} />}
         {run && <RunSummary run={run} />}
         <ViewToggle mode={view.mode} onChange={view.setMode} webgl={view.webgl} />
+        {collectorUrl && (
+          <a
+            href={`/dashboard?${new URLSearchParams({ collector: collectorUrl, workspace })}`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChartColumn aria-hidden className="size-4" />
+            Costs
+          </a>
+        )}
         {collectorUrl && !publicMode && <TokenButton onSaved={retry} />}
       </header>
 

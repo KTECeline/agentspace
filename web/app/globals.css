@@ -37,6 +37,10 @@
   --st-error-bg: oklch(0.93 0.045 28);
   --st-error-fg: oklch(0.47 0.16 28);
   --st-error-dot: oklch(0.64 0.19 28);
+
+  /* Charts (dashboard): one data hue, validated for contrast and lightness against --surface. */
+  --chart-bar: oklch(0.55 0.14 38);
+  --chart-grid: oklch(0.89 0.02 75);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -73,6 +77,9 @@
     --st-error-bg: oklch(0.33 0.07 28);
     --st-error-fg: oklch(0.88 0.07 28);
     --st-error-dot: oklch(0.7 0.17 28);
+
+    --chart-bar: oklch(0.66 0.13 45);
+    --chart-grid: oklch(0.34 0.02 55);
   }
 }
 
@@ -86,6 +93,8 @@
   --color-ring: var(--ring);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-chart-bar: var(--chart-bar);
+  --color-chart-grid: var(--chart-grid);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-fredoka);

@@ -9,10 +9,17 @@ export function Cost({ totals, className }: { totals: CostTotals; className?: st
   return (
     <span className={className} title={note ?? undefined}>
       {text}
-      {estimated && (
+      {estimated ? (
         <span aria-hidden className="ml-1 font-sans text-[0.75em] font-medium text-muted">
           est.
         </span>
+      ) : (
+        totals.cost_usd === 0 &&
+        totals.unpriced_calls > 0 && (
+          <span aria-hidden className="ml-1 font-sans text-[0.75em] font-medium text-muted">
+            no price
+          </span>
+        )
       )}
       {note && <span className="sr-only"> ({note})</span>}
     </span>

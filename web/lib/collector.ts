@@ -1,4 +1,4 @@
-import type { ApprovalState, RunState, ServerInfo } from "@agentspace/spec-types";
+import type { ApprovalState, PriceTable, RunState, ServerInfo, StatsResponse } from "@agentspace/spec-types";
 
 /**
  * The collector's REST API for operator actions (approve, pause, cancel), plus the operator
@@ -58,6 +58,15 @@ export function fetchInfo(base: string): Promise<ServerInfo> {
 }
 
 const ws = (workspace: string) => encodeURIComponent(workspace);
+
+export function fetchStats(base: string, workspace: string, since: string | null, token: string | null): Promise<StatsResponse> {
+  const q = since ? `?since=${encodeURIComponent(since)}` : "";
+  return call(base, `/v1/workspaces/${ws(workspace)}/stats${q}`, token);
+}
+
+export function fetchPricing(base: string): Promise<PriceTable> {
+  return call(base, "/v1/pricing", null);
+}
 
 export function resolveApproval(
   base: string,
