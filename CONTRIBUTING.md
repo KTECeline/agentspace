@@ -1,7 +1,13 @@
 # Contributing to AgentSpace
 
-Thanks for helping. This page covers the dev setup, how changes are made, and one network
-workaround.
+Thanks for helping. This page covers the dev setup, how changes are made, pull requests, and
+one network workaround. By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Found a security problem? Don't open an issue: see [SECURITY.md](SECURITY.md).
+
+**Where to start.** Issues labelled
+[`good first issue`](https://github.com/KTECeline/agentspace/labels/good%20first%20issue) are
+small and self-contained. New framework adapters are very welcome: open an issue with the
+"Adapter request" template first, so we can agree on the framework's official hook.
 
 ## Setup
 
@@ -37,6 +43,23 @@ uv run --group crewai pytest tests/test_crewai_adapter.py
 - **Commits** follow [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat(server): ...`, `fix(sdk-ts): ...`), one working step per commit.
 - Record design decisions in `docs/DECISIONS.md` (the next `D-NNN`).
+
+## Pull requests
+
+1. For anything bigger than a small fix, open an issue first, so we agree on the approach.
+2. Branch from `main`. Keep the PR to one change, split into conventional commits.
+3. Before pushing: `make test && make lint typecheck`, and `make gen-types` if you touched
+   `spec/`. CI also runs every example without a collector, a secret scan, and a Docker build.
+4. Fill in the PR template. Include a screenshot or GIF for UI changes, and the benchmark
+   numbers (`bench/`) if you touched the SDK's hot path.
+
+What reviewers look for:
+- tests for new behaviour, including the failure paths;
+- no new runtime dependency in the Python SDK (it has none, D-008), and a stated reason for
+  any other new dependency;
+- UI colors from the tokens in `web/app/globals.css`, with light and dark mode, real
+  `<button>`s, visible focus, and loading, empty and error states;
+- docs updated: README, `docs/`, and the example READMEs.
 
 ## Building behind a TLS-intercepting proxy
 

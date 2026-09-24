@@ -1,0 +1,41 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks! Please **remove API keys, tokens and private prompts** from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest code or steps that show it. A `--fake` example command is ideal.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options: [Python SDK, TypeScript SDK, "Adapter: LangGraph", "Adapter: CrewAI", "Adapter: OpenAI Agents", "Adapter: Claude Agent SDK", Claude Code hooks, OTLP ingest, Collector, Office (web), Dashboard or replay, Docker, Docs]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: agentspace-sdk, your framework, Python/Node, OS, browser.
+      placeholder: agentspace-sdk 0.1.0, langgraph 1.2, Python 3.12, macOS 26, Chrome 140
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Collector output, the SDK's warning line, the browser console.

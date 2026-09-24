@@ -1,0 +1,22 @@
+name: Adapter request
+description: Support for another agent framework.
+labels: [adapter]
+body:
+  - type: input
+    id: framework
+    attributes:
+      label: Framework and version
+      placeholder: AutoGen 0.7, Pydantic AI 1.4, Mastra 0.20, ...
+    validations:
+      required: true
+  - type: textarea
+    id: hook
+    attributes:
+      label: Its official extension point
+      description: AgentSpace adapters only use documented callbacks, tracing processors, event buses or hooks (never monkeypatching). Link the docs if you know them. If the framework speaks OpenTelemetry GenAI, it may already work through OTLP.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you help?
+      options:
+        - label: I can write or test the adapter.
