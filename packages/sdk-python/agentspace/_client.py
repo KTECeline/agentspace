@@ -55,6 +55,9 @@ class Config:
     flush_interval: float = 0.2
     timeout: float = 2.0
     enabled: bool = True
+    #: "raise": Cancel raises agentspace.Cancelled at the next safe point.
+    #: "flag": nothing is raised; poll agentspace.is_cancelled().
+    cancel_mode: str = "raise"
     adapters: list[str] = field(default_factory=list)
 
 
@@ -72,6 +75,13 @@ class Client:
                 timeout=config.timeout,
             )
         self._lock = threading.Lock()
+        #: run_id -> "paused" | "cancelled" (absent = running), as last reported by the collector.
+        self.controls: dict[str, str] = {}
+        self.cancel_announced: set[str] = set()
+        self._active_runs: dict[str, float] = {}  # run_id -> last event time (monotonic)
+        if self.transport is not None:
+            self.transport.on_controls = self._apply_controls
+            self.transport.poll = self.poll_controls
         self._agents: dict[str, AgentInfo] = {}
         self._registered: set[tuple[str, str]] = set()
         self._default_run_id: str | None = None
@@ -109,6 +119,7 @@ class Client:
         if parent_id is UNSET:
             parent_id = current_step.get()
         rid = run_id or current_run.get() or self.default_run()
+        self._active_runs[rid] = time.monotonic()
         if agent_id is not None:
             self._ensure_registered(rid, agent_id, team_id)
 
@@ -155,6 +166,69 @@ class Client:
         except Exception as exc:
             internal_error("content/redact", exc)
             return None
+
+    def redact_value(self, field_name: str, value: Any) -> Any:
+        """Like ``content`` but ignores ``capture_content``: for values the developer passes
+        on purpose for a person to see (approval payloads). Redaction still applies."""
+        if value is None:
+            return None
+        try:
+            if self.config.redact is not None:
+                value = self.config.redact(field_name, value)
+                if value is None:
+                    return None
+            if isinstance(value, str):
+                return truncate(value, self.config.max_content_chars)
+            dumped = json.dumps(value, default=str)
+            return (
+                truncate(dumped, self.config.max_content_chars)
+                if len(dumped) > self.config.max_content_chars
+                else json.loads(dumped)
+            )
+        except Exception as exc:
+            internal_error("redact_value", exc)
+            return None
+
+    # ---- controls ----
+
+    def _apply_controls(self, controls: dict[str, str]) -> None:
+        for run_id, state in controls.items():
+            if state in ("paused", "cancelled") and self.controls.get(run_id) != "cancelled":
+                self.controls[run_id] = state
+
+    def poll_controls(self) -> None:
+        """Ask the collector about runs that were active in the last minute (sender thread)."""
+        from agentspace._control import CollectorError, api
+
+        now = time.monotonic()
+        for rid, seen in list(self._active_runs.items()):
+            if now - seen > 60:
+                self._active_runs.pop(rid, None)
+        runs = list(self._active_runs)[:50]
+        if not runs:
+            return
+        import urllib.parse
+
+        ws = urllib.parse.quote(self.config.workspace, safe="")
+        query = urllib.parse.quote(",".join(runs), safe=",")
+        try:
+            status, body = api(
+                self, "GET", f"/v1/workspaces/{ws}/controls?runs={query}", timeout=2.0
+            )
+        except CollectorError:
+            return
+        if status != 200 or not isinstance(body, dict):
+            return
+        for rid in runs:
+            state = body.get(rid)
+            if state in ("paused", "cancelled"):
+                self._apply_controls({rid: state})
+            elif self.controls.get(rid) == "paused":
+                self.controls.pop(rid, None)  # resumed
+
+    @property
+    def default_run_id(self) -> str | None:
+        return self._default_run_id
 
     # ---- agents ----
 

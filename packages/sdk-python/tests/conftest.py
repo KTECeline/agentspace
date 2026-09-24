@@ -38,6 +38,7 @@ def assert_valid_events(validator: Draft202012Validator, events: list[dict[str, 
 import socket  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
+import urllib.parse  # noqa: E402
 from collections.abc import Iterator  # noqa: E402
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
 
@@ -45,32 +46,95 @@ import agentspace  # noqa: E402
 
 
 class FakeCollector:
+    """Records batches and emulates the approval and run-control endpoints."""
+
     def __init__(self, port: int = 0) -> None:
         self.events: list[dict[str, Any]] = []
         self.batches = 0
         self.status = 200
+        self.approvals: dict[str, dict[str, Any]] = {}
+        self.controls: dict[str, str] = {}
+        self.approval_status_override: int | None = None
+        self.closing = False
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
+            def _json(self, code: int, body: Any) -> None:
+                raw = json.dumps(body).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
             def do_POST(self) -> None:
                 body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                if outer.status == 200:
-                    outer.events.extend(json.loads(body)["events"])
-                    outer.batches += 1
-                self.send_response(outer.status)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(b'{"accepted":0,"rejected":0}')
+                if outer.status != 200:
+                    self._json(outer.status, {"error": "nope"})
+                    return
+                events = json.loads(body)["events"]
+                outer.events.extend(events)
+                outer.batches += 1
+                runs = set()
+                for e in events:
+                    runs.add(e["run_id"])
+                    if e["type"] == "approval.requested":
+                        outer.approvals[e["data"]["approval_id"]] = {"status": "pending"}
+                controls = {r: outer.controls[r] for r in runs if r in outer.controls}
+                self._json(200, {"accepted": len(events), "rejected": 0, "controls": controls})
+
+            def do_GET(self) -> None:
+                url = urllib.parse.urlparse(self.path)
+                q = urllib.parse.parse_qs(url.query)
+                wait = float(q.get("wait", ["0"])[0])
+                deadline = time.monotonic() + wait
+                if "/approvals/" in url.path:
+                    if outer.approval_status_override:
+                        self._json(outer.approval_status_override, {"error": "x"})
+                        return
+                    aid = url.path.rsplit("/", 1)[-1]
+                    while (
+                        outer.approvals.get(aid, {}).get("status") == "pending"
+                        and time.monotonic() < deadline
+                    ):
+                        if outer.closing:  # like a crash: drop the connection, no response
+                            self.close_connection = True
+                            self.connection.close()
+                            return
+                        time.sleep(0.02)
+                    a = outer.approvals.get(aid)
+                    self._json(200 if a else 404, a or {"error": "not found"})
+                elif url.path.endswith("/controls"):
+                    runs = q.get("runs", [""])[0].split(",")
+                    before = {r: outer.controls.get(r) for r in runs}
+                    while (
+                        wait
+                        and time.monotonic() < deadline
+                        and {r: outer.controls.get(r) for r in runs} == before
+                    ):
+                        time.sleep(0.02)
+                    self._json(200, {r: outer.controls[r] for r in runs if r in outer.controls})
+                else:
+                    self._json(404, {})
 
             def log_message(self, *args: Any) -> None:
                 pass
 
         self.server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        self.server.daemon_threads = True
         self.url = f"http://127.0.0.1:{self.server.server_port}"
         self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self._thread.start()
 
+    def resolve(self, approval_id: str, decision: str, comment: str | None = None) -> None:
+        self.approvals[approval_id] = {
+            "status": decision,
+            "comment": comment,
+            "resolved_by": "operator",
+        }
+
     def stop(self) -> None:
+        self.closing = True
         self.server.shutdown()
         self.server.server_close()
 

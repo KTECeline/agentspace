@@ -19,6 +19,7 @@ from typing import Any, Literal, TypeVar, overload
 
 from agentspace._client import AgentInfo, Client, Config, RedactHook
 from agentspace._context import AgentRef, current_agent, current_run, current_step
+from agentspace._control import Cancelled, acheckpoint, checkpoint
 from agentspace._log import internal_error, logger
 from agentspace._util import new_id, slugify, truncate
 
@@ -48,6 +49,7 @@ def init(
     redact: RedactHook | None = None,
     auto_instrument: bool = True,
     enabled: bool | None = None,
+    cancel_mode: Literal["raise", "flag"] = "raise",
     **options: Any,
 ) -> Client | None:
     """Start sending events to an AgentSpace collector.
@@ -62,6 +64,9 @@ def init(
             ``None`` to drop it.
         auto_instrument: Turn on adapters for installed frameworks (e.g. LangGraph).
         enabled: Set False (or env ``AGENTSPACE_DISABLED=1``) to make every call a no-op.
+        cancel_mode: What an operator's Cancel does. ``"raise"`` (default) raises
+            ``agentspace.Cancelled`` (a BaseException) at the next safe point; ``"flag"`` only
+            makes ``agentspace.is_cancelled()`` return True.
         **options: Advanced transport settings: ``max_queue``, ``max_batch``,
             ``flush_interval``, ``timeout``, ``max_content_chars``.
     """
@@ -76,6 +81,7 @@ def init(
             capture_content=capture_content,
             redact=redact,
             enabled=enabled,
+            cancel_mode="flag" if cancel_mode == "flag" else "raise",
             **{k: v for k, v in options.items() if k in _CONFIG_OPTIONS},
         )
         if _client is not None:
@@ -169,7 +175,15 @@ def _short(text: str | None, limit: int = 500) -> str | None:
 
 
 class _Scope:
+    #: Scopes that are a safe point to pause or cancel (agents and steps; not the run itself).
+    _checkpoint = False
+
     def __enter__(self: S) -> S:
+        if self._checkpoint:
+            checkpoint()  # may block (paused) or raise Cancelled; both on purpose
+        return self._enter()
+
+    def _enter(self: S) -> S:
         try:
             self._start()
         except Exception as exc:
@@ -189,7 +203,9 @@ class _Scope:
         return False  # never swallow user exceptions
 
     async def __aenter__(self: S) -> S:
-        return self.__enter__()
+        if self._checkpoint:
+            await acheckpoint()  # pausing waits in a thread, not on the event loop
+        return self._enter()
 
     async def __aexit__(
         self,
@@ -264,14 +280,15 @@ class run(_Scope):
 
     def _end(self, exc: BaseException | None) -> None:
         if _client:
-            if exc is not None:
+            cancelled = isinstance(exc, Cancelled)
+            if exc is not None and not cancelled:  # a cancel is not an error
                 _client.emit(
                     "error", _error_data(exc), run_id=self.run_id, agent_id=None, team_id=None
                 )
             _client.emit(
                 "run.finished",
                 {
-                    "status": "error" if exc else "ok",
+                    "status": "cancelled" if cancelled else "error" if exc else "ok",
                     "duration_ms": round((time.monotonic() - self._t0) * 1000, 1),
                 },
                 run_id=self.run_id,
@@ -284,10 +301,13 @@ class run(_Scope):
 
 class step(_Scope):
     """A unit of work inside an agent. Steps nest; child events point at it via ``parent_id``.
+    Entering a step is a safe point to pause or cancel.
 
     >>> with agentspace.step("reproduce bug"):
     ...     run_tests()
     """
+
+    _checkpoint = True
 
     def __init__(self, name: str, *, kind: Literal["agent", "chain", "custom"] = "custom") -> None:
         self.name = truncate(name, 256)
@@ -317,6 +337,8 @@ class step(_Scope):
 
 class _AgentScope(_Scope):
     """Makes an agent the "current agent": registers it, opens an agent step, and tracks status."""
+
+    _checkpoint = True
 
     def __init__(
         self,
@@ -353,7 +375,9 @@ class _AgentScope(_Scope):
     def _end(self, exc: BaseException | None) -> None:
         if self._token is None:
             return
-        if exc is not None:
+        if isinstance(exc, Cancelled):
+            set_status("done", "cancelled by an operator")
+        elif exc is not None:
             emit("error", _error_data(exc), summary=f"{type(exc).__name__}: {exc}")
             set_status("error", detail=truncate(str(exc), 500))
         else:

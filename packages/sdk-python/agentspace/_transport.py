@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 from agentspace._log import internal_error, logger, warn_limited
@@ -55,6 +56,13 @@ class Transport:
         self.sent = 0
         self.dropped = 0
         self.rejected = 0
+
+        #: Called with the ingest response's "controls" ({run_id: "paused" | "cancelled"}).
+        self.on_controls: Callable[[dict[str, str]], None] | None = None
+        #: Called every ``poll_interval`` seconds from the sender thread (control polling).
+        self.poll: Callable[[], None] | None = None
+        self.poll_interval = 2.0
+        self._last_poll = 0.0
 
         self._thread = threading.Thread(target=self._run, name="agentspace-transport", daemon=True)
         self._thread.start()
@@ -113,6 +121,16 @@ class Transport:
                 self._drain()
             except Exception as exc:  # pragma: no cover - defensive
                 internal_error("transport", exc)
+            if (
+                self.poll is not None
+                and not self._backoff
+                and time.monotonic() - self._last_poll >= self.poll_interval
+            ):
+                self._last_poll = time.monotonic()
+                try:
+                    self.poll()
+                except Exception as exc:  # pragma: no cover - defensive
+                    internal_error("transport.poll", exc)
 
     def _drain(self) -> None:
         while self._queue and not self._stop.is_set():
@@ -165,7 +183,11 @@ class Transport:
         self._mark_up()
         rejected = 0
         with contextlib.suppress(Exception):
-            rejected = int(json.loads(raw or b"{}").get("rejected", 0))
+            body = json.loads(raw or b"{}")
+            rejected = int(body.get("rejected", 0))
+            controls = body.get("controls")
+            if controls and self.on_controls is not None:
+                self.on_controls(controls)
         self.rejected += rejected
         self.sent += n - rejected
         if rejected:
