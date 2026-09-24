@@ -143,8 +143,56 @@ I also checked by hand in the browser against a live collector:
 - **Cancelling is final** for the run id. With the Claude Agent SDK, later prompts in the same session are stopped too.
 - **A small rendering glitch:** while the 3D scene mounts (about 1 s), the agent labels bunch up in the top-left corner. It isn't from this phase.
 
-## Phase 4b: Cost + replay + docs (next)
-- Price table with `as_of` and a source URL per model.
-- Costs carry `source: estimated | reported`, and the UI shows "est.".
-- Cost dashboard and replay timeline.
-- Examples and docs.
+## Phase 4b: Costs, dashboard, replay, examples ✅ (2026-09-24, awaiting review)
+
+**Done-check:**
+- `scripts/cost_check.sh` passed against a local collector. It checks that:
+  - a call with tokens and no cost gets an estimate from the table (with `as_of`);
+  - reported costs, and calls billed on another event, are never re-priced;
+  - unknown models stay unpriced and are counted;
+  - run totals and the stats API agree;
+  - every model in the price table has a date and an official source;
+  - stats carry no payloads.
+- `scripts/controls_check.sh` passed again. `demo_check.sh` now runs both and also checks `/dashboard` and `/replay`.
+- The full Docker done-check still can't rebuild images while npm is TLS-intercepted.
+
+I also checked by hand in the browser, against a local collector with ten days of seeded runs:
+- the dashboard: tiles, cost per day with tooltips, cost by agent and model with **est.** and "no price", the runs table and the slowest tools;
+- replay of an approval run and of a paused, resumed and cancelled run: markers, jumping to them, and the office state at each point;
+- `/demo` with the scrubber.
+
+**One real paid run** (you approved it): the Claude Agent SDK example through OpenRouter, `claude-haiku-4-5`, `--approve --budget 0.05`. The refund was approved over REST and the run finished.
+- The CLI reported **$0.0190** (3 turns). That's the whole cost of this phase's real calls.
+- AgentSpace showed $0.0190 as reported, with $0 estimated and 0 unpriced calls.
+- Pricing the per-message tokens with our table would have given only $0.0117: the CLI's bill includes usage the messages don't show. This confirms why a reported cost always wins over an estimate.
+
+- [x] **Spec** (D-037): `cost_source` (`reported | estimated`), `tokens_cache_read`, `tokens_cache_write`. Both SDKs pass them through. Every adapter fills the cache counts from its framework's usage data. The Claude Agent SDK adapter marks per-message calls `cost_source: "reported"`, because the session is billed on `ResultMessage`.
+- [x] **Price table** (D-038): `server/src/pricing/prices.json` covers 61 Anthropic, OpenAI and Google models.
+  - Each price was copied from the official page on 2026-09-24, with its `as_of` date and `source`.
+  - Price periods (Gemini Flash changes on 2027-01-01), long-context tiers where the threshold is published, and cache read/write rates.
+  - Model id normalization (OpenRouter, Bedrock, Vertex, dated ids), with no fuzzy matching.
+  - `AGENTSPACE_PRICES_FILE` overrides; `GET /v1/pricing`.
+- [x] **Pricing at ingest** for `/v1/events` and OTLP (OTLP also maps the cache token attributes). Estimated events record which price was used (`agentspace.price_model`, `agentspace.price_as_of`).
+- [x] **Projections:** `cost_estimated_usd` and `unpriced_calls` on agents and runs, the same on the SQL side and in the web `Projector` (the fixture was regenerated). Old SQLite databases get the columns on startup.
+- [x] **"est." in the UI:** run summary, agent cards, agent panel (with the price date) and dashboard. A tooltip plus screen-reader text split estimated from reported cost and count unpriced calls.
+- [x] **Stats API** (D-039): `GET /v1/workspaces/:ws/stats?since=&until=` returns cost per run, agent, model and day, LLM latency p50/p95, the error rate and the slowest tools. It's a store contract test, and public mode is safe.
+- [x] **Cost dashboard** at `/dashboard` (linked from the office header): 24h/7d/30d/all, auto-refresh, loading, empty and error states, a table view for the chart, and the price sources in the footer.
+- [x] **Replay** (D-040): `/replay?run=`, a scrubber at 1x/4x/16x with markers for errors, handoffs, approvals and pause/cancel, and jumps to the next error or handoff. Desks stay put. `/demo` uses the same player.
+- [x] **Examples:**
+  - `claude-agent-sdk-support --approve` uses `approval_callback()` for real runs and `--replay`. CI checks that it fails closed without a collector.
+  - CrewAI with `step_checkpoint`, OpenAI Agents with `ControlHooks()`. Pause holding and cancel stopping were checked by hand in fake mode.
+  - The `/demo` dev-team recording now includes a pause, a resume and an approval.
+
+**Test counts:**
+- Python 62 core, plus 9–12 per adapter group
+- TS SDK 26
+- collector 60
+- web 52
+
+### Deferred or known gaps
+- **Postgres is deferred** (see above).
+- **Estimates are list prices.** No batch, fast-mode, regional or negotiated pricing, and no per-search tool fees. OpenAI gpt-6 and gpt-5.6 long-context prices aren't applied, because the page gives no threshold. Anthropic cache writes use the 5-minute rate.
+- **Prices go stale.** Update `prices.json` (and `as_of`) from the source pages. Gemini Flash's 2027 prices are already in the table as a second period.
+- **Replay** of runs longer than 50,000 events shows only the first 50,000 (the page says so).
+- **The browser check was in an unfocused automation window.** There, `requestAnimationFrame` runs rarely, so the 3D canvas and the store's frame flush lag behind (the state was correct). Worth a look in a normal window. The dashboard wasn't checked at phone width (the window resize didn't take effect).
+- **A cancel that arrives during the last model call** lets that run finish (safe points only; seen with the OpenAI Agents example).

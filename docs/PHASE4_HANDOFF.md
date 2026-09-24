@@ -9,7 +9,7 @@ For the next Claude Code session. Read this file, then `CLAUDE.md`, `docs/PROGRE
 | Phases 1–3 | Done and approved |
 | Phase 4a (store interface, auth, approvals, pause/cancel) | **Built and pushed, CI green. Waiting for the user's review.** Don't start 4b until the user says so. |
 | Postgres backend (part of 4a) | **Deferred** by the user (2026-09-24) until npm is reachable |
-| Phase 4b (pricing + cost dashboard, replay, examples, docs) | **Plan approved 2026-09-24; in progress.** D-037 is taken (cost sources); the next entry is D-038. |
+| Phase 4b (pricing + cost dashboard, replay, examples, docs) | **Built and pushed 2026-09-24; waiting for the user's review.** Decisions D-037 to D-040; the next entry is D-041. See PROGRESS.md. |
 
 ## Working agreement (from the user; applies every phase)
 

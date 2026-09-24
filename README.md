@@ -4,13 +4,15 @@
 
 ![AgentSpace: a LangGraph dev team (Manager, Triage, Engineer) at their desks in a cozy isometric office, with a live event log](docs/assets/office-3d.jpg)
 
-> 🚧 **Early development: Phase 3 of 5.** Working today:
-> - the live 3D office (plus a 2D view);
+> 🚧 **Early development: Phase 4 of 5.** Working today:
+> - the live 3D office (plus a 2D view), with replay of any stored run;
 > - Python and TypeScript SDKs;
 > - adapters for LangGraph, CrewAI, the OpenAI Agents SDK, the Claude Agent SDK and Claude Code;
-> - OpenTelemetry (OTLP) ingest.
+> - OpenTelemetry (OTLP) ingest;
+> - approvals, pause and cancel from the office, and auth;
+> - a cost dashboard, with list-price estimates clearly marked "est.".
 >
-> Next: approvals from the office, replay, and cost. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> Next: Postgres, benchmarks and releases. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quickstart
 
@@ -48,6 +50,9 @@ Want to see it without writing any code?
 - **Handoffs, tool calls and model calls** in a filterable event log, with token counts and model names.
 - **A 2D view** for low-power machines or screen readers. Toggle it in the header; it's used automatically when WebGL isn't available.
 - **Run totals**: duration, tokens, cost, and event count.
+- **Costs you can trust.** A framework's own billed cost is shown as reported. Where there is none, the collector estimates it from a price table (with the date each price was checked and its official source) and marks it **est.** A cost dashboard shows cost per run, agent, model and day, model latency, the run error rate and the slowest tools.
+- **Replay.** Scrub through any stored run at 1x, 4x or 16x and jump straight to errors, handoffs, approvals and pauses.
+- **Approvals, pause and cancel from the office**, and optional auth (API keys, an operator token, or public read-only mode).
 - **Works with your framework.** LangGraph, CrewAI and the OpenAI Agents SDK are instrumented automatically, and the Claude Agent SDK with two helper calls. All of them use each framework's *official* extension point, so nothing is monkey-patched. There's also plain OpenTelemetry over OTLP, and a TypeScript SDK.
 - **Watch your own Claude Code sessions.** Every project gets a room, and subagents get their own desks. Permission prompts glow "needs you".
 - **Manual API for everything else**: `@agentspace.agent`, `agentspace.step()`, `agentspace.emit()`.
@@ -125,6 +130,25 @@ agentspace.checkpoint()   # a safe point: waits while paused, raises agentspace.
 
 Approve or reject in the office's **Approvals** tab. Pause, resume or cancel a run from the header. `agentspace.Cancelled` subclasses `BaseException`, so `except Exception` won't swallow it. Use `init(cancel_mode="flag")` and `is_cancelled()` if you'd rather poll. Agent and step scopes are safe points too. The adapters add their own safe points: LangGraph does it automatically; OpenAI Agents needs `hooks=ControlHooks()` to pause; CrewAI uses `step_callback=step_checkpoint`; the Claude Agent SDK uses its PreToolUse hook plus `can_use_tool=approval_callback()`.
 
+### Costs
+
+Each `llm.call` event carries its own cost, and `cost_source` says where it came from:
+
+| The event has | The collector | Shown as |
+|---|---|---|
+| `cost_usd` (a framework reported it, like the Claude Agent SDK's `total_cost_usd`) | keeps it | the number |
+| tokens, a model, and no cost | prices it from `server/src/pricing/prices.json` and sets `cost_source: "estimated"` | the number + **est.** |
+| `cost_source: "reported"` and no cost (billed on another event) | leaves it alone | (counted in that other event) |
+| tokens and a model that isn't in the table | leaves it unpriced and counts it | "no price" |
+
+Each model's prices have an `as_of` date and the official source page. Cache reads and writes (`tokens_cache_read`, `tokens_cache_write`) get their own rates. Add or correct prices with `AGENTSPACE_PRICES_FILE=/path/prices.json` (same shape as `GET /v1/pricing`). Estimates use standard list prices, with no batch, regional or negotiated discounts.
+
+The **Costs** page (`/dashboard`, linked from the office header) reads `GET /v1/workspaces/:ws/stats?since=&until=`.
+
+### Replay
+
+Click **Replay** next to the latest run in the office, or on any run in the Costs page's run table (`/replay?run=<id>`). The office plays the run's stored events at 1x, 4x or 16x. The scrubber marks errors, handoffs, approvals and pause/cancel, with buttons to jump to the next error or handoff. Pauses longer than 3 seconds are shortened. `/demo` plays its recordings the same way.
+
 ### Securing the collector
 
 | Variable | Effect |
@@ -145,7 +169,7 @@ make dev            # collector (:4800) + web (:4801) with hot reload
 make test           # pytest + vitest
 make lint typecheck # ruff, mypy, eslint, tsc
 make gen-types      # regenerate TS + Python types after editing spec/
-make demo-check     # compose up, check /demo, approvals + pause/cancel, run example live, kill collector mid-run
+make demo-check     # compose up, check the pages, approvals + pause/cancel, costs, run example live, kill collector mid-run
 # Behind a TLS-intercepting proxy? See CONTRIBUTING.md (optional CA build arg).
 make record         # save the latest finished run as the /demo recording
 cd packages/sdk-python && uv sync --group crewai   # one framework group at a time for adapter work
@@ -158,7 +182,7 @@ Repo layout: `spec/` (event schema) · `packages/sdk-python` · `packages/spec-t
 1. ✅ Spec, Python SDK, LangGraph adapter, collector, 2D view
 2. ✅ 3D office (react-three-fiber): auto-layout, avatars, handoff animations, agent panel, recorded demo
 3. ✅ Adapters for the Claude Agent SDK, CrewAI, the OpenAI Agents SDK and Claude Code hooks; OTLP ingest; TypeScript SDK
-4. Human approvals from the office, pause/cancel, replay timeline, cost dashboard, Postgres, auth
+4. Human approvals from the office, pause/cancel, auth, cost estimates and dashboard, replay timeline: built, in review (Postgres deferred)
 5. Published overhead benchmarks, releases to PyPI and npm, docs site, public demo
 
 ## License

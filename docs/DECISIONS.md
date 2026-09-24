@@ -290,3 +290,25 @@ What broke and what changed:
 - Not modelled: batch discounts, fast mode, data-residency multipliers, per-search tool fees, image/audio tokens. An estimate is a floor for those.
 
 **Why:** estimates must be auditable and must never overwrite what a framework reported (requirement 4). Pricing at ingest keeps the SQL projection, the web `Projector`, recordings and replays consistent, because they all just sum `cost_usd`.
+
+## D-039 · Dashboard aggregates: raw rows in the store, grouping in one pure function (2026-09-24)
+**Decision:**
+- `GET /v1/workspaces/:ws/stats?since=&until=` returns totals, cost per run, agent, model and UTC day, LLM latency (p50/p95, nearest rank), the run error rate (failed / (ok + failed); cancelled runs don't count) and the ten slowest tools by p95.
+- The `Store` only fetches raw rows for the window (`llm.call`, `tool.result` and `error` events, runs that started in it, agents). `computeStats()` in `server/src/store/stats.ts` does all grouping and percentiles, so a Postgres store returns the same numbers without duplicating SQL. A `(workspace, type, ts)` index keeps the window queries cheap.
+- Cost per run, agent, model and day comes from events *in the window*; run counts and the error rate come from runs that *started* in it.
+- It returns aggregates only, so it's the same in public read-only mode. It needs the same read access as the rest of the workspace API.
+- The web page (`/dashboard`) is a separate route, so it can't cost the office any frames. It uses one data hue (`--chart-bar`, validated against both surfaces) and shows the estimated share in tooltips and tables instead of a second color, so no categorical palette is needed.
+
+**Why:** percentiles and time windows are awkward and backend-specific in SQL. Returning rows and aggregating in one tested function keeps both stores consistent. The event volume per workspace is bounded by retention.
+
+## D-040 · Replay re-projects on seek, with the same Projector (2026-09-24)
+**Decision:**
+- `/replay?run=` loads a run's stored events (paged, capped at 50,000) and plays them with `ReplayPlayer` (`web/lib/sources/replay.ts`), a source like the live and recorded ones.
+- **Seeking** re-projects every event up to that moment with the shared `Projector` and sends one `snapshot`. Playing forward sends the usual `events`/`agents`/`runs` deltas. There is no reverse-apply and no snapshot cache: runs are thousands of events, and a full re-projection takes milliseconds.
+- Agents in a replay snapshot are ordered by first appearance in the run, so desks never move while scrubbing. A loop restart (`/demo`) keeps every agent at its desk instead of emptying the office.
+- Idle gaps longer than 3 s are squashed (a 10-minute wait for an approval plays as 3 s). The scrubber shows replay time; the event's real time is shown next to it.
+- Markers: `error` events and failed runs, handoffs, `approval.requested`/`resolved`, and `run.control`. Approvals are rebuilt from their events, so the Approvals tab shows them as they were at that moment. Operator actions are hidden in replay: it's not a live collector.
+- Seeks are coalesced with a ~16 ms timer, not `requestAnimationFrame`, because rAF doesn't run in background tabs and a pending seek would then swallow every later one.
+- `/demo` recordings use the same player (the old timer-based recorded source is gone). Recordings are shifted to start "now"; stored runs keep their real timestamps.
+
+**Why:** one projection path (the one the collector's fixture already checks) is simpler and more trustworthy than a second, reversible state machine.
