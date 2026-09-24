@@ -66,6 +66,7 @@ def make_tools(workdir: Path, approve: bool = False) -> dict[str, BaseTool]:
             )
             if not decision.approved:
                 why = decision.comment or decision.error or decision.decision
+                print(f"  {path} was not written: {decision.decision} ({why})")
                 return f"ERROR: not approved ({why}). Do not retry; explain what you'd change."
         safe(path).write_text(content)
         return f"wrote {len(content)} bytes to {path}"
