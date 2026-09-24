@@ -74,7 +74,9 @@ class _Session:
     task_calls: dict[str, str] = field(default_factory=dict)
     sub_steps: dict[str, tuple[str, float]] = field(default_factory=dict)
     tool_t0: dict[str, float] = field(default_factory=dict)
-    seen_messages: set[str] = field(default_factory=set)
+    #: assistant messages still being assembled: the SDK splits one API response into several
+    #: AssistantMessages with the same message id, and early ones carry partial usage.
+    pending: dict[str, dict[str, Any]] = field(default_factory=dict)
     agents: set[str] = field(default_factory=set)
 
 
@@ -196,6 +198,8 @@ class ClaudeAgentTracker:
             return
         session_id = str(data.get("session_id") or "session")
         s = self._session(session_id)
+        if event in ("PreToolUse", "SubagentStart", "Stop"):
+            self._flush_messages(s)  # the model's message that led here is complete
         handler = getattr(self, f"_on_{slugify(event).replace('-', '_')}", None)
         if handler:
             handler(s, data, tool_use_id or data.get("tool_use_id"))
@@ -422,51 +426,75 @@ class ClaudeAgentTracker:
         session_id = str(getattr(msg, "session_id", None) or next(iter(self._sessions), "session"))
         s = self._session(session_id)
         key = str(getattr(msg, "message_id", None) or getattr(msg, "uuid", None) or id(msg))
-        usage = getattr(msg, "usage", None) or {}
-        if key in s.seen_messages or not usage:
-            return  # the SDK can split one API message into several; count it once
-        s.seen_messages.add(key)
+        # A new message id means every earlier message is complete.
+        for other in [k for k in s.pending if k != key]:
+            self._flush_message(s, other)
         parent = getattr(msg, "parent_tool_use_id", None)
-        agent_id = s.task_calls.get(str(parent), s.main_id) if parent else s.main_id
-        tools = [b.name for b in getattr(msg, "content", []) if type(b).__name__ == "ToolUseBlock"]
-        text = " ".join(
-            getattr(b, "text", "")
-            for b in getattr(msg, "content", [])
-            if type(b).__name__ == "TextBlock"
-        ).strip()
+        entry = s.pending.setdefault(
+            key,
+            {
+                "agent_id": s.task_calls.get(str(parent), s.main_id) if parent else s.main_id,
+                "model": getattr(msg, "model", None),
+                "usage": {},
+                "tools": [],
+                "text": [],
+                "stop_reason": None,
+            },
+        )
+        for k, v in (getattr(msg, "usage", None) or {}).items():
+            if isinstance(v, (int, float)):
+                entry["usage"][k] = max(entry["usage"].get(k, 0), v)
+        for b in getattr(msg, "content", []) or []:
+            kind = type(b).__name__
+            if kind == "ToolUseBlock":
+                entry["tools"].append(b.name)
+            elif kind == "TextBlock":
+                text = getattr(b, "text", None)
+                if text:
+                    entry["text"].append(text)
+        entry["stop_reason"] = getattr(msg, "stop_reason", None) or entry["stop_reason"]
+
+    def _flush_messages(self, s: _Session) -> None:
+        for key in list(s.pending):
+            self._flush_message(s, key)
+
+    def _flush_message(self, s: _Session, key: str) -> None:
+        entry = s.pending.pop(key, None)
+        if entry is None or not entry["usage"]:
+            return
+        usage = entry["usage"]
+        text = " ".join(entry["text"]).strip()
         captured = self._content("llm.output", text or None)
         tin = (
             (usage.get("input_tokens") or 0)
             + (usage.get("cache_read_input_tokens") or 0)
             + (usage.get("cache_creation_input_tokens") or 0)
         )
-        summary = (
-            "chose tool: " + ", ".join(tools)
-            if tools
-            else (
-                truncate(captured, 200)
-                if isinstance(captured, str) and captured
-                else f"{msg.model} replied"
-            )
-        )
+        if entry["tools"]:
+            summary = "chose tool: " + ", ".join(entry["tools"])
+        elif isinstance(captured, str) and captured:
+            summary = truncate(captured, 200)
+        else:
+            summary = f"{entry['model'] or 'model'} replied"
         self._emit(
             s,
             "llm.call",
             {
                 "provider": "anthropic",
                 "operation": "chat",
-                "finish_reason": getattr(msg, "stop_reason", None),
+                "finish_reason": entry["stop_reason"],
                 "output": captured,
             },
-            agent_id,
+            entry["agent_id"],
             tokens_in=tin or None,
             tokens_out=usage.get("output_tokens"),
-            model=getattr(msg, "model", None),
+            model=entry["model"],
             summary=summary,
         )
 
     def _result(self, msg: Any) -> None:
         s = self._session(str(getattr(msg, "session_id", None) or "session"))
+        self._flush_messages(s)
         cost = getattr(msg, "total_cost_usd", None)
         if cost:
             # Per-message costs aren't reported; attach the session's billed cost as one entry so
@@ -483,18 +511,52 @@ class ClaudeAgentTracker:
                 cost_usd=float(cost),
                 summary=f"session cost ${float(cost):.4f} ({getattr(msg, 'num_turns', '?')} turns)",
             )
-        if getattr(msg, "is_error", False):
+        failed = bool(getattr(msg, "is_error", False))
+        if failed:
             self._emit(
                 s,
                 "error",
                 {
                     "message": truncate(
-                        "; ".join(getattr(msg, "errors", None) or ["run failed"]), 2000
+                        "; ".join(
+                            getattr(msg, "errors", None)
+                            or [str(getattr(msg, "subtype", "run failed"))]
+                        ),
+                        2000,
                     ),
                     "kind": str(getattr(msg, "subtype", "error")),
                 },
                 s.main_id,
             )
+        # The result message ends the query. If no Stop hook closed the turn (e.g. the budget
+        # or turn limit was hit), close it here so the run doesn't stay "running" forever.
+        if s.turn_step is not None:
+            client = self._client()
+            if client is not None:
+                self._emit(
+                    s,
+                    "step.finished",
+                    {"step_id": s.turn_step, "name": f"turn {s.turn}", "ok": not failed},
+                    s.main_id,
+                    parent_id=None,
+                )
+                for agent_id in sorted(s.agents):
+                    self._status(
+                        s, agent_id, "error" if failed and agent_id == s.main_id else "done"
+                    )
+                client.emit(
+                    "run.finished",
+                    {
+                        "status": "error" if failed else "ok",
+                        "duration_ms": getattr(msg, "duration_ms", None),
+                    },
+                    run_id=s.run_id,
+                    agent_id=None,
+                    team_id=None,
+                    parent_id=None,
+                )
+                s.turn_step = None
+        elif failed:
             self._status(s, s.main_id, "error")
 
 

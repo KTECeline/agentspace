@@ -24,12 +24,17 @@ from typing import Any
 from dotenv import load_dotenv
 
 import agentspace
-from agentspace.adapters.claude_agent_sdk import ClaudeAgentTracker, instrument_options, replay, tracker, track
+from agentspace.adapters.claude_agent_sdk import ClaudeAgentTracker, instrument_options, replay, track
 
 HERE = Path(__file__).parent
-PROMPT = "Customer #881 asks: was invoice 42 paid, and can they get a refund? Keep replies short."
+PROMPT = (
+    "Customer #881 was double-charged for invoice 42 and is owed a refund. "
+    "Have billing-specialist confirm the invoice, then issue the refund. Keep replies short."
+)
 
-OPENROUTER_MODEL = "~anthropic/claude-haiku-latest"
+# Anthropic's own model name: OpenRouter accepts it, and Claude Code can price it (so the
+# --budget cap is accurate). "~anthropic/..." ids work too, but Claude Code can't price them.
+OPENROUTER_MODEL = "claude-haiku-4-5"
 
 
 def provider_env() -> tuple[dict[str, str], str]:
@@ -90,10 +95,8 @@ async def run_real(budget: float) -> None:
     async def ask_human(tool_name: str, tool_input: dict[str, Any], context: Any) -> Any:
         if not tool_name.endswith("refund"):
             return PermissionResultAllow()
-        # Show "needs you" in the office while the terminal waits for an answer.
-        tracker().status("waiting_human", "approve refund?")
+        # The PermissionRequest hook already shows "needs you" in the office while we wait.
         answer = await asyncio.to_thread(input, f"\nApprove refund {tool_input}? [y/N] ")
-        tracker().status("thinking")
         return PermissionResultAllow() if answer.strip().lower() == "y" else PermissionResultDeny(message="The human said no.")
 
     server = create_sdk_mcp_server("billing", tools=[lookup_invoice, refund])
@@ -103,9 +106,17 @@ async def run_real(budget: float) -> None:
         env=env,
         max_turns=6,
         max_budget_usd=budget,
-        system_prompt="You lead customer support. Delegate invoice lookups to billing-specialist. Refunds need the refund tool.",
+        system_prompt=(
+            "You lead customer support. Never look up invoices yourself: always delegate that to "
+            "the billing-specialist agent. When a refund is owed, call the refund tool right away. "
+            "Do not ask the customer to confirm; the refund tool asks a human for approval itself."
+        ),
         mcp_servers={"billing": server},
-        allowed_tools=["mcp__billing__lookup_invoice", "Task"],
+        # Only the tools this example needs. Claude Code's full built-in toolset adds ~35k
+        # input tokens to every call; trimming it makes real runs several times cheaper.
+        tools=["Agent"],
+        setting_sources=[],  # don't load your personal ~/.claude settings, skills or hooks
+        allowed_tools=["mcp__billing__lookup_invoice", "Agent"],
         agents={
             "billing-specialist": AgentDefinition(
                 description="Looks up invoices",
@@ -120,7 +131,7 @@ async def run_real(budget: float) -> None:
     async for message in track(query(prompt=PROMPT, options=options)):
         if type(message).__name__ == "ResultMessage":
             cost = getattr(message, "total_cost_usd", None)
-            print("result:", getattr(message, "result", ""))
+            print("result:", getattr(message, "result", "") or getattr(message, "subtype", ""))
             print(f"cost reported by the CLI: ${cost or 0:.4f} (turns: {getattr(message, 'num_turns', '?')})")
 
 
@@ -140,7 +151,11 @@ def main() -> int:
     if args.replay:
         run_replay(args.runs, args.delay)
     else:
-        asyncio.run(run_real(args.budget))
+        try:
+            asyncio.run(asyncio.wait_for(run_real(args.budget), timeout=120))
+        except TimeoutError:
+            print("Stopped: the run took longer than 2 minutes.", file=sys.stderr)
+            return 1
     agentspace.flush()
     return 0
 

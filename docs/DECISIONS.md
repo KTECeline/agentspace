@@ -187,3 +187,14 @@ PyPI rejected `agentspace` with "too similar to an existing project": it matches
 - Claude Code runs PreToolUse hooks synchronously before every tool call, so the command must be cheap and must not be able to fail the session.
 - Hook stdout can be fed back into Claude's context, which is why it prints nothing.
 - The installer writes the absolute path of the current Python so the hook works outside any virtualenv.
+
+## D-029 · Findings from the first live runs, via OpenRouter (2026-09-24)
+These are the first real (non-fake) runs of the Claude Agent SDK example and of a Claude Code hook session. Both went through OpenRouter's Anthropic-compatible endpoint (`ANTHROPIC_BASE_URL=https://openrouter.ai/api`, key in `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY=""`). Total spend was **$0.2151** of OpenRouter credit, measured from the key's usage before and after; Anthropic spend was $0.
+
+What broke and what changed:
+- **Model ids:** Claude Code can't price OpenRouter's `~anthropic/…` ids, so its `max_budget_usd` guard tripped early: it estimated $0.25 when $0.06 was actually billed. **Decision:** default to Anthropic's native `claude-haiku-4-5`, which OpenRouter also accepts and Claude Code can price.
+- **Hang after a budget stop:** the subagent kept running and the CLI never exited. **Decision:** the example has a 2-minute overall timeout, and the adapter now finishes the turn and the run on the `ResultMessage` when no Stop hook arrives (regression test added).
+- **Prompt size:** Claude Code's full built-in toolset adds about 35k input tokens per call. `tools=["Agent"]` plus `setting_sources=[]` cut it to about 3.7k, making a full run about 5× cheaper ($0.0186).
+- **Output tokens undercounted:** one API response arrives as several `AssistantMessage`s with the same id, and the early ones carry partial usage. **Decision:** merge by message id and emit once the message is complete (on a new id, PreToolUse, SubagentStart, Stop, or the result).
+- **The "reported" cost from Claude Code is only an estimate** when a gateway is in front of it. Phase 4b's cost `source` should distinguish "reported by the framework" from "billed by the provider", and not treat a gateway-routed framework cost as authoritative.
+- **Verified live:** handoff to the subagent, the subagent's tool call, the "needs you" status during the permission request, and completion. For Claude Code: hooks for SessionStart through SessionEnd, with metadata-only tool summaries.

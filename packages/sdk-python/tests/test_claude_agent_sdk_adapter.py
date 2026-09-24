@@ -125,3 +125,78 @@ def test_track_passes_messages_through(collector: FakeCollector) -> None:
 
 def test_noop_without_init() -> None:
     cas.replay(FIXTURE["items"], cas.ClaudeAgentTracker())
+
+
+def test_budget_stop_without_stop_hook_still_finishes_the_run(collector: FakeCollector) -> None:
+    """Seen live: hitting max_budget_usd ends with an error ResultMessage and no Stop hook."""
+    init_fast(collector.url)
+    items = [
+        i
+        for i in FIXTURE["items"]
+        if i.get("hook") != "Stop" and i.get("message") != "ResultMessage"
+    ]
+    items.append(
+        {
+            "message": "ResultMessage",
+            "data": {
+                "subtype": "error_max_budget_usd",
+                "duration_ms": 5000,
+                "duration_api_ms": 4000,
+                "is_error": True,
+                "num_turns": 2,
+                "session_id": "sess-1",
+                "total_cost_usd": 0.1,
+                "errors": ["Reached maximum budget ($0.1)"],
+            },
+        }
+    )
+    cas.replay(items, cas.ClaudeAgentTracker(**FIXTURE["tracker"]))
+    agentspace.flush()
+    ev = collector.events
+    finished = [e for e in ev if e["type"] == "run.finished"]
+    assert len(finished) == 1 and finished[0]["data"]["status"] == "error"
+    errors = [e["data"]["message"] for e in ev if e["type"] == "error"]
+    assert "Reached maximum budget ($0.1)" in errors
+    assert [e for e in ev if e["type"] == "step.finished" and e["data"]["name"] == "turn 1"]
+
+
+def test_split_assistant_messages_are_merged(collector: FakeCollector) -> None:
+    """Seen live: one API response arrives as several AssistantMessages with the same id;
+    early ones carry partial output usage. Count the response once, with its final usage."""
+    init_fast(collector.url)
+    base = {"model": "claude-haiku-4-5", "message_id": "msg_x", "session_id": "s9"}
+    items = [
+        {"hook": "UserPromptSubmit", "data": {"session_id": "s9", "prompt": "hi"}},
+        {
+            "message": "AssistantMessage",
+            "data": {
+                **base,
+                "content": [{"type": "text", "text": "Let me check."}],
+                "usage": {"input_tokens": 3700, "output_tokens": 6},
+            },
+        },
+        {
+            "message": "AssistantMessage",
+            "data": {
+                **base,
+                "content": [{"type": "tool_use", "id": "t1", "name": "Agent", "input": {}}],
+                "usage": {"input_tokens": 3700, "output_tokens": 58},
+            },
+        },
+        {
+            "message": "ResultMessage",
+            "data": {
+                "subtype": "success",
+                "duration_ms": 1,
+                "duration_api_ms": 1,
+                "is_error": False,
+                "num_turns": 1,
+                "session_id": "s9",
+            },
+        },
+    ]
+    cas.replay(items, cas.ClaudeAgentTracker("Support"))
+    agentspace.flush()
+    (llm,) = [e for e in collector.events if e["type"] == "llm.call"]
+    assert (llm["tokens_in"], llm["tokens_out"]) == (3700, 58)
+    assert llm["summary"] == "chose tool: Agent"
