@@ -52,6 +52,8 @@ export interface TransportOptions {
   maxBatch: number;
   flushIntervalMs: number;
   timeoutMs: number;
+  /** Called with the run controls (paused / cancelled) the collector returns on ingest. */
+  onControls?: (controls: Record<string, string>) => void;
 }
 
 const MAX_BACKOFF_MS = 10_000;
@@ -152,7 +154,9 @@ export class Transport {
         this.markUp();
         let rejected = 0;
         try {
-          rejected = Number(((await res.json()) as { rejected?: number }).rejected ?? 0);
+          const out = (await res.json()) as { rejected?: number; controls?: Record<string, string> };
+          rejected = Number(out.rejected ?? 0);
+          if (out.controls && this.opts.onControls) this.opts.onControls(out.controls);
         } catch {
           // ignore
         }

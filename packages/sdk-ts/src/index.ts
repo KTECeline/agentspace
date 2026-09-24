@@ -12,10 +12,14 @@ import type { AgentSpaceEvent, AgentStatus, EventType } from "./spec.js";
 import { current, withCtx, type Ctx } from "./context.js";
 import { internalError } from "./log.js";
 import { Transport } from "./transport.js";
+import * as control from "./control.js";
+import { isCancelled, type ApprovalOptions, type ApprovalResult, type CancelMode, type ControlHost, type ControlState } from "./control.js";
 import { isPromiseLike, newId, nowIso, slugify, truncate } from "./util.js";
 
 export type { AgentSpaceEvent, AgentStatus, EventType } from "./spec.js";
 export { hasAsyncContext } from "./context.js";
+export { Cancelled, isCancelled } from "./control.js";
+export type { ApprovalOptions, ApprovalResult, CancelMode, Decision } from "./control.js";
 
 export const SPEC_VERSION = "0.1";
 export const DEFAULT_URL = "http://localhost:4800";
@@ -40,6 +44,9 @@ export interface InitOptions {
   flushIntervalMs?: number;
   timeoutMs?: number;
   maxContentChars?: number;
+  /** What an operator's cancel does at a safe point: throw `Cancelled` ("raise", default) or
+   * just flag the run (poll `runCancelled()`). */
+  cancelMode?: CancelMode;
 }
 
 export interface AgentOptions {
@@ -66,8 +73,15 @@ export interface EmitFields extends EnvelopeExtras {
   parentId?: string | null;
 }
 
-class Client {
+const POLL_INTERVAL_MS = 2000;
+const ACTIVE_RUN_MS = 60_000;
+
+class Client implements ControlHost {
   readonly transport: Transport | null;
+  readonly controls = new Map<string, ControlState>();
+  readonly cancelAnnounced = new Set<string>();
+  private activeRuns = new Map<string, number>();
+  private pollTimer: ReturnType<typeof setInterval> | undefined;
   private agents = new Map<string, AgentInfo>();
   private registered = new Set<string>();
   private defaultRunId: string | null = null;
@@ -83,8 +97,65 @@ class Client {
           maxBatch: opts.maxBatch,
           flushIntervalMs: opts.flushIntervalMs,
           timeoutMs: opts.timeoutMs,
+          onControls: (c) => {
+            for (const [runId, state] of Object.entries(c)) control.applyControl(this, runId, state);
+          },
         })
       : null;
+    if (this.transport) {
+      // Runs that go quiet (e.g. waiting on a slow tool) still learn about pause / cancel.
+      this.pollTimer = setInterval(() => void this.poll(), POLL_INTERVAL_MS);
+      (this.pollTimer as { unref?: () => void }).unref?.();
+    }
+  }
+
+  get url() {
+    return this.opts.url;
+  }
+  get workspace() {
+    return this.opts.workspace;
+  }
+  get apiKey() {
+    return this.opts.apiKey;
+  }
+  get cancelMode() {
+    return this.opts.cancelMode;
+  }
+  get enabled() {
+    return this.transport !== null && !this.closed;
+  }
+  currentRunId(): string | undefined {
+    return current().runId ?? this.defaultRunId ?? undefined;
+  }
+  currentAgentId(): string | undefined {
+    return current().agent?.agentId;
+  }
+  flush(timeoutMs: number): Promise<boolean> {
+    return this.transport ? this.transport.flush(timeoutMs) : Promise.resolve(true);
+  }
+
+  private async poll(): Promise<void> {
+    const now = Date.now();
+    for (const [rid, seen] of this.activeRuns) if (now - seen > ACTIVE_RUN_MS) this.activeRuns.delete(rid);
+    await control.pollControls(this, [...this.activeRuns.keys()].slice(0, 50));
+  }
+
+  /** Like content(), but ignores captureContent (used for approval payloads a person reviews). */
+  redactValue(field: string, value: unknown): unknown {
+    if (value === undefined || value === null) return undefined;
+    try {
+      let v: unknown = value;
+      if (this.opts.redact) {
+        v = this.opts.redact(field, v);
+        if (v === undefined || v === null) return undefined;
+      }
+      if (typeof v === "string") return truncate(v, this.opts.maxContentChars);
+      const s = JSON.stringify(v);
+      return s.length > this.opts.maxContentChars ? truncate(s, this.opts.maxContentChars) : JSON.parse(s);
+    } catch (err) {
+      internalError("redact", err);
+      return undefined;
+    }
   }
 
   emit(type: EventType, data: Record<string, unknown> = {}, f: EmitFields = {}): string | null {
@@ -95,6 +166,7 @@ class Client {
     const parentId = f.parentId !== undefined ? f.parentId : (ctx.stepId ?? null);
     const runId = f.runId ?? ctx.runId ?? this.defaultRun();
     if (agentId) this.ensureRegistered(runId, agentId);
+    this.activeRuns.set(runId, Date.now());
 
     const id = newId();
     const ev: Record<string, unknown> = {
@@ -170,6 +242,7 @@ class Client {
       this.emit("run.finished", { status: "ok", duration_ms: Date.now() - this.defaultRunStart }, { runId: this.defaultRunId, agentId: null, teamId: null, parentId: null });
     }
     this.closed = true;
+    if (this.pollTimer !== undefined) clearInterval(this.pollTimer);
     await this.transport?.shutdown(timeoutMs);
   }
 }
@@ -202,6 +275,7 @@ export function init(options: InitOptions = {}): void {
       flushIntervalMs: options.flushIntervalMs ?? 200,
       timeoutMs: options.timeoutMs ?? 2000,
       maxContentChars: options.maxContentChars ?? 16_000,
+      cancelMode: options.cancelMode ?? "raise",
     });
     if (previous) void previous.shutdown(500);
     installExitHook();
@@ -341,8 +415,9 @@ export function run<T>(name: string, fn: () => T, opts: RunOptions = {}): T {
     client ? { runId, agent: undefined, stepId: undefined } : null,
     () => client?.emit("run.started", { name, framework: opts.framework, input: client.content("run.input", opts.input) }, { ...none, summary: name }),
     (err) => {
-      if (err !== undefined) client?.emit("error", errorData(err), none);
-      client?.emit("run.finished", { status: err !== undefined ? "error" : "ok", duration_ms: Date.now() - t0 }, none);
+      const cancelled = isCancelled(err);
+      if (err !== undefined && !cancelled) client?.emit("error", errorData(err), none); // a cancel is not an error
+      client?.emit("run.finished", { status: cancelled ? "cancelled" : err !== undefined ? "error" : "ok", duration_ms: Date.now() - t0 }, none);
     },
     fn,
   );
@@ -354,6 +429,7 @@ export function step<T>(name: string, fn: () => T, kind: "agent" | "chain" | "cu
   const t0 = Date.now();
   const parent = current().stepId ?? null;
   const label = truncate(name, 256);
+  control.cancelPoint(client); // a safe point: throws Cancelled once the run is cancelled
   return scoped(
     client ? { stepId } : null,
     () => emit("step.started", { step_id: stepId, name: label, kind }, { parentId: parent }),
@@ -385,6 +461,7 @@ export function agent<T>(options: AgentOptions | string, fn: () => T): T {
   const stepId = newId();
   const parent = current().stepId ?? null;
   const t0 = Date.now();
+  control.cancelPoint(client); // a safe point: throws Cancelled once the run is cancelled
   return scoped(
     client ? { agent: { agentId: info.agentId, teamId: info.teamId }, stepId } : null,
     () => {
@@ -394,7 +471,8 @@ export function agent<T>(options: AgentOptions | string, fn: () => T): T {
       setStatus("thinking");
     },
     (err) => {
-      if (err !== undefined) {
+      if (isCancelled(err)) setStatus("done", "cancelled by an operator");
+      else if (err !== undefined) {
         emit("error", errorData(err), { summary: truncate(`${errorData(err).kind}: ${errorData(err).message}`, 500) });
         setStatus("error", String(err));
       } else setStatus("done");
@@ -412,3 +490,38 @@ export function agent<T>(options: AgentOptions | string, fn: () => T): T {
 export function wrapAgent<A extends unknown[], R>(options: AgentOptions | string, fn: (...args: A) => R): (...args: A) => R {
   return (...args: A) => agent(options, () => fn(...args));
 }
+
+// ---------------------------------------------------------------------------
+// Two-way control: approvals and pause / resume / cancel. See control.ts for the semantics.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask a person in the office to approve something, and wait for their decision. Fails closed:
+ * resolves "approved" only if a person approved before `timeoutMs` (default 5 minutes); never
+ * rejects. Throws `Cancelled` if the run is cancelled while waiting (raise mode).
+ */
+export function requestApproval(reason: string, payload?: unknown, opts?: ApprovalOptions): Promise<ApprovalResult> {
+  return control.requestApproval(client, reason, payload, opts);
+}
+
+/**
+ * A safe point to pause or stop: waits while the run is paused (showing "blocked"), then
+ * throws `Cancelled` (raise mode) or resolves false (flag mode) once it's cancelled. Resolves
+ * true to keep going. Call it inside your own loops; `agent()` and `step()` check for cancel.
+ */
+export async function checkpoint(runId?: string): Promise<boolean> {
+  try {
+    return await control.checkpoint(client, runId);
+  } catch (err) {
+    if (isCancelled(err)) throw err;
+    internalError("checkpoint", err);
+    return true;
+  }
+}
+
+/** True once an operator cancelled the current (or given) run. */
+export function runCancelled(runId?: string): boolean {
+  const rid = runId ?? client?.currentRunId();
+  return !!(client && rid && client.controls.get(rid) === "cancelled");
+}
+
