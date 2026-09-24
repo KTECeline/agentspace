@@ -392,6 +392,17 @@ class ClaudeAgentTracker:
         )
         s.turn_step = None
 
+    def status(self, status: str, detail: str | None = None) -> None:
+        """Set the main agent's status in the most recent session, e.g. ``waiting_human`` while
+        your ``can_use_tool`` callback asks a person."""
+        try:
+            if self._client() is None or not self._sessions:
+                return
+            s = self._sessions[next(reversed(self._sessions))]
+            self._status(s, s.main_id, status, detail)
+        except Exception as exc:
+            internal_error("claude_agent_sdk.status", exc)
+
     # ---------------- messages ----------------
 
     def observe(self, message: Any) -> None:
@@ -519,6 +530,11 @@ async def track(
     async for message in messages:
         t.observe(message)
         yield message
+
+
+def tracker() -> ClaudeAgentTracker:
+    """The tracker ``instrument_options`` configured (for ``tracker().status(...)``)."""
+    return _default
 
 
 def replay(recording: list[dict[str, Any]], tracker: ClaudeAgentTracker | None = None) -> None:

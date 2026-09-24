@@ -38,8 +38,11 @@ for (;;) {
   events.push(...page);
   after = page.at(-1).seq;
 }
-// Strip collector-specific fields; the player assigns its own seq numbers.
-const clean = events.map(({ seq: _seq, ...e }) => e);
+// Strip collector-specific fields (the player assigns its own seq numbers) and order by event
+// time: OTLP spans arrive when they *end*, so arrival order isn't time order.
+const clean = events
+  .map(({ seq: _seq, ...e }) => e)
+  .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
 const recording = { format: "agentspace-recording", version: 1, name: args.name, run_id: runId, events: clean };
 writeFileSync(args.out, JSON.stringify(recording) + "\n");
 console.log(`recorded run ${runId}: ${clean.length} events -> ${args.out}`);

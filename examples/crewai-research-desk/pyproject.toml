@@ -1,0 +1,12 @@
+[project]
+name = "crewai-research-desk"
+version = "0.1.0"
+description = "AgentSpace example: a CrewAI research crew writes a short report."
+requires-python = ">=3.10,<3.14"
+dependencies = ["agentspace-sdk", "crewai>=1.10", "python-dotenv>=1.0"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+agentspace-sdk = { path = "../../packages/sdk-python", editable = true }

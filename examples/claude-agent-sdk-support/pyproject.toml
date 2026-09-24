@@ -1,0 +1,12 @@
+[project]
+name = "claude-agent-sdk-support"
+version = "0.1.0"
+description = "AgentSpace example: a Claude Agent SDK support desk with a subagent and a human approval."
+requires-python = ">=3.10"
+dependencies = ["agentspace-sdk", "claude-agent-sdk>=0.2", "python-dotenv>=1.0"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+agentspace-sdk = { path = "../../packages/sdk-python", editable = true }

@@ -91,19 +91,34 @@ jobs:
       - run: cd packages/sdk-python && uv sync --locked
       - run: make check-generated
 
-  example:
-    name: Example runs with no collector
+  examples:
+    name: Example ${{ matrix.example }} (no collector)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - example: langgraph-dev-team
+            args: --fake --runs 2 --latency 0
+          - example: crewai-research-desk
+            args: --fake --latency 0
+          - example: openai-agents-handoffs
+            args: --fake --latency 0
+          - example: claude-agent-sdk-support
+            args: --replay --delay 0
+          - example: otel-generic
+            args: --latency 0
     defaults:
       run:
-        working-directory: examples/langgraph-dev-team
+        working-directory: examples/${{ matrix.example }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
+          enable-cache: true
       - run: uv sync --locked
-      # Nothing listens on :4899, so this proves the SDK never crashes the host app.
-      - run: uv run python main.py --fake --runs 2 --latency 0
+      # Nothing listens on :4899, so this proves instrumentation never crashes the host app.
+      - run: uv run python main.py ${{ matrix.args }}
         env:
           AGENTSPACE_URL: http://127.0.0.1:4899

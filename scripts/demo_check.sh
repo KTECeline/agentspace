@@ -17,7 +17,7 @@ trap 'rm -f "$LOG"; docker compose start collector >/dev/null 2>&1 || true' EXIT
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 step "Starting collector + web (docker compose up)"
-docker compose up -d --build --wait
+docker compose up -d --build --force-recreate --wait
 
 step "Checking the web app (office, /demo, bundled recording)"
 for path in / /demo; do
@@ -40,6 +40,16 @@ for _ in $(seq 1 60); do
 done
 [ "$n" = 3 ] || { echo "FAIL: agents did not appear"; cat "$LOG"; exit 1; }
 echo "ok: manager, triage, engineer are live in workspace $WS ($WEB/?workspace=$WS)"
+
+step "Checking an OpenTelemetry-only agent (no AgentSpace SDK) shows up via OTLP"
+(cd examples/otel-generic && AGENTSPACE_WORKSPACE="$WS-otel" VIRTUAL_ENV= uv run python main.py --latency 0.1) >/dev/null 2>&1
+for _ in $(seq 1 40); do
+  m=$(curl -fsS "$COLLECTOR/v1/workspaces/$WS-otel/agents" 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
+  [ "$m" -ge 3 ] && break
+  sleep 0.5
+done
+[ "$m" -ge 3 ] || { echo "FAIL: OTLP agents did not appear"; exit 1; }
+echo "ok: router, researcher, writer arrived over OTLP"
 
 step "Killing the collector mid-run"
 docker compose kill collector >/dev/null

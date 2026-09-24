@@ -11,6 +11,7 @@ import { useSource, type SourceConfig } from "@/lib/useSource";
 import { useThrottled } from "@/lib/useThrottled";
 import { useViewMode, type ViewMode } from "@/lib/useViewMode";
 import { Grid2D } from "./office2d/Grid2D";
+import { ScenarioPicker } from "./ScenarioPicker";
 import { AgentPanel } from "./panels/AgentPanel";
 import { EventLog } from "./panels/EventLog";
 
@@ -22,9 +23,11 @@ const OfficeScene = dynamic(() => import("./office/OfficeScene"), {
 interface Props {
   source: SourceConfig;
   showFps?: boolean;
+  /** Demo only: the current recording, to show the scenario picker. */
+  scenario?: string;
 }
 
-export function OfficeApp({ source, showFps = false }: Props) {
+export function OfficeApp({ source, showFps = false, scenario }: Props) {
   const view = useViewMode();
   const { retry, error } = useSource(source);
   const ready = useOffice((s) => s.ready);
@@ -49,6 +52,7 @@ export function OfficeApp({ source, showFps = false }: Props) {
         <h1 className="font-display text-xl font-semibold tracking-tight">AgentSpace</h1>
         <span className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-muted">workspace: {workspace}</span>
         <ConnectionPill connection={connection} onRetry={retry} />
+        {scenario && <ScenarioPicker current={scenario} />}
         {run && <RunSummary run={run} />}
         <ViewToggle mode={view.mode} onChange={view.setMode} webgl={view.webgl} />
       </header>
