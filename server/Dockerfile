@@ -1,5 +1,5 @@
 # Build context: repository root.
-FROM node:22-slim AS build
+FROM node:22-alpine AS build
 # Optional, off by default: an extra CA for networks that intercept TLS (see CONTRIBUTING.md).
 # PEM text, used only by the install/build steps of this stage; the runtime image never has it.
 ARG EXTRA_CA_CERT=""
@@ -17,7 +17,7 @@ RUN [ -s /tmp/extra-ca.pem ] && export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; pn
  && pnpm --filter @agentspace/server deploy --legacy --prod /out \
  && cp -r server/dist /out/dist
 
-FROM node:22-slim
+FROM node:22-alpine
 ENV NODE_ENV=production PORT=4800 HOST=0.0.0.0 AGENTSPACE_DB=/data/agentspace.db
 WORKDIR /app
 COPY --from=build /out /app

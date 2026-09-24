@@ -137,3 +137,30 @@ jobs:
       - run: uv run python main.py ${{ matrix.args }}
         env:
           AGENTSPACE_URL: http://127.0.0.1:4899
+
+  docker:
+    name: Docker images (build + size budget)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        run: |
+          docker buildx build --load -f server/Dockerfile -t agentspace-collector:ci .
+          docker buildx build --load -f web/Dockerfile -t agentspace-web:ci .
+      - name: Size budget (under 250 MB each)
+        run: |
+          for img in agentspace-collector:ci agentspace-web:ci; do
+            bytes=$(docker image inspect "$img" --format '{{.Size}}')
+            echo "$img: $((bytes / 1000000)) MB"
+            [ "$bytes" -lt 250000000 ] || { echo "::error::$img is over budget"; exit 1; }
+          done
+      - name: Smoke test
+        run: |
+          docker run -d --name c -p 4800:4800 agentspace-collector:ci
+          docker run -d --name w -p 4801:4801 agentspace-web:ci
+          for i in $(seq 1 30); do curl -fs localhost:4800/healthz && curl -fs -o /dev/null localhost:4801/demo && break; sleep 1; done
+          curl -fsS localhost:4800/v1/pricing | head -c 200; echo
+          curl -fsS -o /dev/null -w "web /demo %{http_code}\n" localhost:4801/demo
+          curl -fsS -o /dev/null -w "web /dashboard %{http_code}\n" localhost:4801/dashboard
+

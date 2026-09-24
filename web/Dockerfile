@@ -1,5 +1,5 @@
 # Build context: repository root.
-FROM node:22-slim AS build
+FROM node:22-alpine AS build
 # Optional, off by default: an extra CA for networks that intercept TLS (see CONTRIBUTING.md).
 # PEM text, used only by the install/build steps of this stage; the runtime image never has it.
 ARG EXTRA_CA_CERT=""
@@ -13,9 +13,11 @@ RUN [ -s /tmp/extra-ca.pem ] && export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; pn
 COPY packages/spec-types packages/spec-types
 COPY web web
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN [ -s /tmp/extra-ca.pem ] && export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; pnpm --filter @agentspace/web build
+RUN [ -s /tmp/extra-ca.pem ] && export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; pnpm --filter @agentspace/web build \
+ # Next traces sharp (and libvips) for image optimization, which is off (next.config.ts): drop them.
+ && find web/.next/standalone/node_modules/.pnpm -maxdepth 1 \( -name 'sharp@*' -o -name '@img+*' \) -exec rm -rf {} +
 
-FROM node:22-slim
+FROM node:22-alpine
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=4801 HOSTNAME=0.0.0.0
 WORKDIR /app
 # Standalone output keeps the monorepo layout (outputFileTracingRoot = repo root).
