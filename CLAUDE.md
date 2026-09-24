@@ -22,10 +22,15 @@ Full brief: `docs/BRIEF.md`. Status: `docs/PROGRESS.md`. Why things are the way 
 | `examples/*` | langgraph-dev-team, crewai-research-desk, openai-agents-handoffs, claude-agent-sdk-support (`--replay`), otel-generic | one uv project each, path-dep on the SDK |
 | `placeholders/` | 0.0.1 name-reservation packages (published; see D-019) | — |
 | `brand.md` | Brand (style A, cozy low-poly): palette, type, motion, voice | — |
+| `bench/` | SDK overhead benchmarks (`sdk_overhead.py`, `.mjs`) + results; UI load procedure | stdlib / Node only |
+| `web/content/docs/` | Docs site pages (Markdown, rendered at `/docs` by `web/lib/docs/markdown.ts`) | — |
+| `docs/LAUNCH.md`, `docs/launch/` | Launch checklist, draft posts, video storyboard, manual test | — |
 
 ## Commands
 ```bash
 make install | dev | test | lint | typecheck | gen-types | check-generated | up | down | demo | demo-check
+python3 scripts/version.py show|set|check   # one version for every package (release.yml checks it)
+scripts/check_public_demo.sh <url>            # verify a public demo deployment
 cd packages/sdk-python && uv run pytest -q          # Python tests (~15 s); add --group <framework> for adapters
 pnpm --filter agentspace-sdk test                    # TS SDK tests
 pnpm --filter @agentspace/server test                # collector tests
@@ -45,6 +50,9 @@ pnpm --filter @agentspace/web test                   # web unit tests
 - **Pricing (D-037/038):** the collector prices an `llm.call` at ingest only when it has tokens and neither `cost_usd` nor `cost_source`. The table is `server/src/pricing/prices.json` (`as_of` + official `source` per model). Copy prices from the source page, never guess. `cost_source: "reported"` with no cost means "billed on another event" (the Claude Agent SDK's per-message calls).
 - **Replay (D-040):** `lib/replay.ts` is pure (timeline, markers, `snapshotAt`). Seeking re-projects from the start and sends one snapshot; agents are ordered by first appearance so desks never move. The player is in the store (`player`) and drives `components/replay/ReplayBar.tsx`.
 - **Dashboard (D-039):** `/dashboard` reads `GET …/stats`. Stores return raw rows; `computeStats()` (`server/src/store/stats.ts`) groups them, so every backend matches. Chart colors are the `--chart-*` tokens (validated with the dataviz palette checker against both surfaces).
+- **Public demo (D-041):** `AGENTSPACE_PUBLIC_DEMO=1` (or `web/vercel.json` on Vercel) redirects `/`, `/dashboard` and `/replay` to `/demo` and sets a CSP with `connect-src 'self'`. The web app must never gain API routes or server actions: the public demo relies on there being nothing to call.
+- **Docs:** add a page by writing `web/content/docs/<slug>.md` and listing it in `web/lib/docs/nav.ts`. The parser never passes raw HTML through; keep it that way.
+- **Releases:** only on `v*` tags (`.github/workflows/release.yml`, `docs/RELEASING.md`). CI runs gitleaks over the full history; never commit keys, `.env` files or personal data (recordings too).
 - **Privacy:** content fields are only filled when `capture_content=True`, via `Client.content(field, value)`, which applies redaction.
 - **Two-way control (D-033/034):** approvals and pause/cancel go SDK → `approval.requested` event → the collector's `approvals` table → an operator resolves (REST) → the SDK long-polls `GET …/approvals/:id?wait=`. Controls reach the SDK via the ingest response's `controls` field plus a 2 s poll; while paused, it long-polls `…/controls`. Python logic is in `agentspace/_control.py`, TS in `src/control.ts`. `Cancelled` is a `BaseException`, raised only at safe points. Approvals must always fail closed. Resolve/control run as single store transactions with a deterministic event id.
 - **Auth (D-032):** `server/src/auth.ts`. Nothing configured means open. Public read-only mode strips approval payloads on every read path (`redactEvent`/`redactApproval` in `app.ts`); new read paths must use them too.

@@ -197,7 +197,7 @@ I also checked by hand in the browser, against a local collector with ten days o
 - **The browser check was in an unfocused automation window.** There, `requestAnimationFrame` runs rarely, so the 3D canvas and the store's frame flush lag behind (the state was correct). Worth a look in a normal window. The dashboard wasn't checked at phone width (the window resize didn't take effect).
 - **A cancel that arrives during the last model call** lets that run finish (safe points only; seen with the OpenAI Agents example).
 
-## Phase 5: Benchmarks + launch (in progress)
+## Phase 5: Benchmarks + launch ✅ (2026-09-25; ready for the user's pre-launch steps)
 
 Plan approved 2026-09-25: Vercel for the docs and demo, docs as a `/docs` route in the Next app, and a video storyboard for the user to record. Additions from the user: a secret scan of the full history (and in CI), a personal-data audit of every recording, an explicitly verified read-only public demo, community files, a comparison table and an architecture diagram in the README, reproducible benchmarks, and a manual test script for Phases 4 and 5.
 
@@ -206,3 +206,44 @@ Plan approved 2026-09-25: Vercel for the docs and demo, docs as a `/docs` route 
   - **Clean.** There are only synthetic values (`/app`, `/tmp/t`, `cart.py`, `reviewer@example.com`, the names "Sam" and "done-check"). The OTLP captures carry only `service.name`, the SDK version and a random `service.instance.id`, with no host, user or path attributes. The screenshots have no EXIF/XMP metadata and show nothing personal.
   - **Needs a decision:** all commit metadata carries the owner's personal email (author and committer). See the launch checklist.
   - To fix before launch: both screenshots show the Next dev badge, and `office-stress-50.jpg` shows a dev-mode "38 fps". Replace them with production-build captures.
+- [x] **SDK overhead benchmarks** (`bench/`, stdlib and Node only): every p99 is under 1 ms. Python's worst is 242 µs (`agent` scope, collector up); TypeScript's is 20 µs. At a steady 1,000 events/s, event-loop lateness matches the no-SDK baseline. With the collector down, 200,000 events leave 6 MB (Python) or 4 MB (Node). The machine, versions and reproduce commands are in `bench/README.md`. A flat-out burst can delay an asyncio loop by a few ms (GIL switch interval), and that's stated as such.
+- [x] **UI load benchmark mode:** `/demo?stress=50&rate=100&bench=20` reports frame-time p50/p95/p99. **The result is pending:** the automation browser window is throttled to about 1 fps, so the published number must come from a focused window (`bench/ui_load.md`).
+- [x] **Docker images:** Alpine bases, sharp dropped, and only the musl `better-sqlite3` prebuild kept. The **collector is 182 MB (was 409)** and the **web image 189 MB (was 430)**. CI builds both, fails over 250 MB, and smoke-tests them.
+- [x] **Release pipeline** (`release.yml`, `scripts/version.py`, `docs/RELEASING.md`):
+  - runs on `v*` tags only, and first checks that every package version matches the tag;
+  - PyPI and npm via OIDC trusted publishing, with no stored tokens and npm provenance;
+  - multi-arch GHCR images with provenance and an SBOM;
+  - a GitHub release last;
+  - manual-approval environments.
+
+  Not triggered.
+- [x] **Community files:** SECURITY.md (private advisories), CODE_OF_CONDUCT.md (the contact is a placeholder: see LAUNCH), issue forms (bug, feature, adapter request), a PR template, and a fuller CONTRIBUTING.
+- [x] **Docs at `/docs`:** 19 pages rendered at build time by a small tested Markdown parser (no new dependency, no raw HTML).
+- [x] **Public demo mode** (D-041):
+  - edge redirects to `/demo`;
+  - a CSP with `connect-src 'self'`;
+  - no API or write routes, and no environment variables;
+  - `.vercelignore`.
+
+  `scripts/check_public_demo.sh` passes against a local demo-mode build, and in the browser the CSP blocks `fetch` and WebSocket calls to other origins. **Not deployed yet** (it needs the user's go-ahead and a Vercel project).
+- [x] **README:** an architecture diagram (Mermaid), "How it compares" (Langfuse, LangSmith, pixel-agents, from their docs as of 2026-09-25), and a benchmark summary.
+- [x] **Launch material:** `docs/LAUNCH.md` (checklist, draft posts, 5 good-first-issue drafts), `docs/launch/video.md` (GIF shot list, 2-minute storyboard and script), `docs/launch/manual-test.md` (10-minute hands-on test).
+
+**Test counts:**
+- Python 62 core, plus 9–12 per adapter group
+- TS SDK 26
+- collector 60
+- web 62
+
+CI has 19 jobs, including the secret scan and the Docker build.
+
+### Waiting on the user (see docs/LAUNCH.md)
+- The hands-on test of Phases 4 and 5 (`docs/launch/manual-test.md`).
+- A decision on the personal email in the commit history.
+- The `CONDUCT_CONTACT` address.
+- The GIF, the stills and the video; the UI benchmark number from a focused window.
+- The Vercel deploy (then run `check_public_demo.sh` on it), the repo settings, the trusted publishers, and the first tag.
+
+### Known gaps
+- The Postgres store is still deferred.
+- The OTLP port 4318 and the label glitch while the 3D office loads are good-first-issue drafts.
