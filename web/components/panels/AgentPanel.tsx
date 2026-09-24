@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, ScrollText, X } from "lucide-react";
 import type { StoredEvent } from "@agentspace/spec-types";
 import { currentStep, toolCalls } from "@/lib/agentDetail";
-import { clock, describe, formatCost, formatDuration, formatTokens, teamLabel, timeAgo } from "@/lib/format";
+import { clock, costInfo, describe, formatDuration, formatTokens, teamLabel, timeAgo } from "@/lib/format";
+import { Cost } from "../Cost";
 import { useOffice } from "@/lib/store";
 import { useNow } from "@/lib/useNow";
 import { useThrottled } from "@/lib/useThrottled";
@@ -52,7 +53,11 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
     return out;
   }, [events, hideStatus]);
 
+  const priceAsOf = useMemo(() => latestPriceAsOf(events), [events]);
+
   if (!agent) return null;
+  const { note } = costInfo(agent);
+  const costNote = note && priceAsOf && agent.cost_estimated_usd > 0 ? `${note} Prices as of ${priceAsOf}.` : note;
 
   return (
     <section aria-labelledby="agent-panel-title" className="flex max-h-[70vh] min-h-0 flex-col rounded-xl border border-border bg-surface lg:max-h-none">
@@ -81,10 +86,16 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
       <div className="min-h-0 flex-1 overflow-y-auto">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-4 text-sm sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
           <Stat label="Tokens" value={`${formatTokens(agent.tokens_in)}→${formatTokens(agent.tokens_out)}`} />
-          <Stat label="Cost" value={formatCost(agent.cost_usd)} />
+          <div className="min-w-0">
+            <dt className="text-xs text-muted">Cost</dt>
+            <dd className="truncate font-mono tabular-nums">
+              <Cost totals={agent} />
+            </dd>
+          </div>
           <Stat label="Model" value={agent.model ?? "—"} />
           <Stat label="Active" value={timeAgo(agent.last_event_at, now)} />
         </dl>
+        {costNote && <p className="border-b border-border px-4 py-2 text-xs text-muted">{costNote}</p>}
 
         {approvals.length > 0 && (
           <div className="flex flex-col gap-2 border-b border-border p-4">
@@ -188,4 +199,13 @@ function ToolState({ state }: { state: "running" | "ok" | "failed" }) {
       )}
     </span>
   );
+}
+
+/** The price-table date on the newest estimated call (the collector stamps it, D-038). */
+function latestPriceAsOf(events: StoredEvent[]): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const asOf = events[i]!.attributes?.["agentspace.price_as_of"];
+    if (typeof asOf === "string") return asOf;
+  }
+  return null;
 }

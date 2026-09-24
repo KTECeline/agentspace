@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentState, RunState, StoredEvent } from "@agentspace/spec-types";
 import { MAX_EVENTS, emptyState, groupByTeam, latestRun, reduce } from "../lib/state";
-import { describe as describeEvent, formatCost, formatDuration, teamLabel, timeAgo } from "../lib/format";
+import { costInfo, describe as describeEvent, formatCost, formatDuration, teamLabel, timeAgo } from "../lib/format";
 
 const agent = (id: string, team: string | null, name = id): AgentState => ({
   workspace: "default",
@@ -92,5 +92,20 @@ describe("format", () => {
     expect(teamLabel("dev-team")).toBe("Dev Team");
     expect(teamLabel("")).toBe("Unassigned");
     expect(timeAgo("2026-01-01T00:00:00Z", Date.parse("2026-01-01T00:00:30Z"))).toBe("30s ago");
+  });
+});
+
+describe("costInfo", () => {
+  const t = (cost_usd: number, cost_estimated_usd = 0, unpriced_calls = 0) => ({ cost_usd, cost_estimated_usd, unpriced_calls });
+
+  it("marks estimated costs and explains mixed ones", () => {
+    expect(costInfo(t(0.5))).toEqual({ text: "$0.50", estimated: false, note: null });
+    expect(costInfo(t(0.5, 0.5))).toEqual({ text: "$0.50", estimated: true, note: "Estimated from list prices." });
+    expect(costInfo(t(0.5, 0.2)).note).toBe("$0.20 estimated from list prices, $0.30 reported by the framework.");
+  });
+
+  it("says when calls could not be priced", () => {
+    expect(costInfo(t(0, 0, 1))).toEqual({ text: "$0", estimated: false, note: "1 model call has no price (model not in the price table)." });
+    expect(costInfo(t(0.01, 0.01, 3)).note).toBe("Estimated from list prices. 3 model calls have no price (model not in the price table).");
   });
 });

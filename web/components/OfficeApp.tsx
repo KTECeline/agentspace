@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Box, Eye, KeyRound, LayoutGrid, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
-import { formatCost, formatDuration, formatTokens } from "@/lib/format";
+import { formatDuration, formatTokens } from "@/lib/format";
 import { latestRun } from "@/lib/state";
 import { useOffice, type Connection } from "@/lib/store";
 import { useSource, type SourceConfig } from "@/lib/useSource";
 import { useThrottled } from "@/lib/useThrottled";
 import { useViewMode, type ViewMode } from "@/lib/useViewMode";
+import { Cost } from "./Cost";
 import { Grid2D } from "./office2d/Grid2D";
 import { ApprovalsPanel, usePendingCount } from "./operator/Approvals";
 import { RunControls } from "./operator/RunControls";
@@ -265,7 +266,7 @@ function RunSummary({ run }: { run: RunState }) {
       </div>
       <Stat label="Duration" value={run.duration_ms != null ? formatDuration(run.duration_ms) : "—"} />
       <Stat label="Tokens" value={`${formatTokens(run.tokens_in)}→${formatTokens(run.tokens_out)}`} />
-      <Stat label="Cost" value={formatCost(run.cost_usd)} />
+      <Stat label="Cost" value={<Cost totals={run} />} />
       <Stat label="Events" value={String(run.event_count)} />
     </dl>
     <RunControls run={run} />
@@ -273,7 +274,7 @@ function RunSummary({ run }: { run: RunState }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-baseline gap-1.5">
       <dt className="text-muted">{label}</dt>

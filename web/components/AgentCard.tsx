@@ -1,5 +1,6 @@
 import type { AgentState } from "@agentspace/spec-types";
-import { formatCost, formatTokens, timeAgo } from "@/lib/format";
+import { formatTokens, timeAgo } from "@/lib/format";
+import { Cost } from "./Cost";
 import { StatusBadge } from "./StatusBadge";
 
 interface Props {
@@ -57,7 +58,9 @@ export function AgentCard({ agent, now, selected, onSelect }: Props) {
         </div>
         <div>
           <dt className="text-muted">Cost</dt>
-          <dd className="tabular-nums">{formatCost(agent.cost_usd)}</dd>
+          <dd className="tabular-nums">
+            <Cost totals={agent} />
+          </dd>
         </div>
         <div>
           <dt className="text-muted">Active</dt>

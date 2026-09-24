@@ -65,6 +65,33 @@ export function formatCost(usd: number): string {
   return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 }
 
+export interface CostTotals {
+  cost_usd: number;
+  cost_estimated_usd: number;
+  unpriced_calls: number;
+}
+
+/**
+ * How to show a cost total (D-037): whether any of it is an estimate, and a sentence that says
+ * what it's made of. Estimates come from the collector's price table, never from the framework.
+ */
+export function costInfo(t: CostTotals): { text: string; estimated: boolean; note: string | null } {
+  const estimated = t.cost_estimated_usd > 0;
+  const parts: string[] = [];
+  if (estimated) {
+    const reported = Math.max(0, t.cost_usd - t.cost_estimated_usd);
+    parts.push(
+      reported > 1e-9
+        ? `${formatCost(t.cost_estimated_usd)} estimated from list prices, ${formatCost(reported)} reported by the framework.`
+        : "Estimated from list prices.",
+    );
+  }
+  if (t.unpriced_calls > 0) {
+    parts.push(`${t.unpriced_calls} model ${t.unpriced_calls === 1 ? "call has" : "calls have"} no price (model not in the price table).`);
+  }
+  return { text: formatCost(t.cost_usd), estimated, note: parts.length ? parts.join(" ") : null };
+}
+
 export function timeAgo(iso: string | null, now: number): string {
   if (!iso) return "never";
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
