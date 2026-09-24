@@ -26,33 +26,37 @@ import subprocess
 import sys
 import time
 import tracemalloc
+from collections.abc import Callable
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import agentspace
 
 N = 50_000
 WARMUP = 2_000
 RESULTS = Path(__file__).parent / "results" / "sdk-python.json"
+COMMAND = "cd packages/sdk-python && VIRTUAL_ENV= uv run python ../../bench/sdk_overhead.py"
 
 
 # ---------------------------------------------------------------- stub collectors
 
 
 class _Up(BaseHTTPRequestHandler):
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         n = int(self.headers.get("content-length", 0))
         body = json.loads(self.rfile.read(n) or b"{}")
-        out = json.dumps({"accepted": len(body.get("events", [])), "duplicates": 0, "rejected": 0, "errors": []}).encode()
+        out = json.dumps(
+            {"accepted": len(body.get("events", [])), "duplicates": 0, "rejected": 0, "errors": []}
+        ).encode()
         self.send_response(200)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(out)))
         self.end_headers()
         self.wfile.write(out)
 
-    def do_GET(self) -> None:  # noqa: N802 (controls poll)
+    def do_GET(self) -> None:
         out = b"{}"
         self.send_response(200)
         self.send_header("content-length", str(len(out)))
@@ -108,7 +112,7 @@ def refused_url() -> str:
 
 
 def pct(sorted_ns: list[int], p: float) -> float:
-    i = min(len(sorted_ns) - 1, max(0, int(round(p / 100 * len(sorted_ns))) - 1))
+    i = min(len(sorted_ns) - 1, max(0, round(p / 100 * len(sorted_ns)) - 1))
     return sorted_ns[i] / 1000  # µs
 
 
@@ -164,7 +168,9 @@ def run_scenario(name: str, url: str | None) -> dict[str, Any]:
     return out
 
 
-async def loop_lag(url: str | None, events: int = 20_000, rate: int | None = None) -> dict[str, float]:
+async def loop_lag(
+    url: str | None, events: int = 20_000, rate: int | None = None
+) -> dict[str, float]:
     """Lateness of a 1 ms ticker while another coroutine emits in bursts of 100. The bursts
     themselves take time (100 emits), so compare against the disabled baseline."""
     if url is None:
@@ -182,14 +188,13 @@ async def loop_lag(url: str | None, events: int = 20_000, rate: int | None = Non
             lags.append((loop.time() - t0 - 0.001) * 1000)
 
     async def producer() -> None:
-        async with agentspace.run("bench-async"):
-            async with agentspace.agent("bench"):
-                for i in range(events):
-                    agentspace.emit("agent.status", {"status": "thinking"})
-                    if rate is not None:
-                        await asyncio.sleep(1 / rate)  # a steady app: one event per tick
-                    elif i % 100 == 99:
-                        await asyncio.sleep(0)  # flat out: 100 events between yields
+        async with agentspace.run("bench-async"), agentspace.agent("bench"):
+            for i in range(events):
+                agentspace.emit("agent.status", {"status": "thinking"})
+                if rate is not None:
+                    await asyncio.sleep(1 / rate)  # a steady app: one event per tick
+                elif i % 100 == 99:
+                    await asyncio.sleep(0)  # flat out: 100 events between yields
         done.set()
 
     await asyncio.gather(ticker(), producer())
@@ -229,7 +234,9 @@ def memory_when_down(events: int = 200_000) -> dict[str, Any]:
 def machine() -> dict[str, str]:
     def sysctl(key: str) -> str:
         try:
-            return subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, timeout=2).stdout.strip()
+            return subprocess.run(
+                ["sysctl", "-n", key], capture_output=True, text=True, timeout=2
+            ).stdout.strip()
         except Exception:
             return ""
 
@@ -255,7 +262,7 @@ def main() -> int:
     }
     results: dict[str, Any] = {
         "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "command": "cd packages/sdk-python && VIRTUAL_ENV= uv run python ../../bench/sdk_overhead.py",
+        "command": COMMAND,
         "sdk_version": getattr(agentspace, "__version__", "?"),
         "machine": machine(),
         "calls_per_op": N,
@@ -267,8 +274,12 @@ def main() -> int:
         results["latency"][name] = run_scenario(name, url)
     for name in ("disabled (baseline)", "collector up", "collector stalled"):
         print(f"event loop: {name} ...", file=sys.stderr)
-        results["event_loop"][f"{name}, 20k events flat out"] = asyncio.run(loop_lag(scenarios[name]))
-        results["event_loop"][f"{name}, 1,000 events/s for 3 s"] = asyncio.run(loop_lag(scenarios[name], 3_000, rate=1_000))
+        results["event_loop"][f"{name}, 20k events flat out"] = asyncio.run(
+            loop_lag(scenarios[name])
+        )
+        results["event_loop"][f"{name}, 1,000 events/s for 3 s"] = asyncio.run(
+            loop_lag(scenarios[name], 3_000, rate=1_000)
+        )
     print("memory with the collector down ...", file=sys.stderr)
     results["memory_down"] = memory_when_down()
     stop_up()
@@ -278,20 +289,25 @@ def main() -> int:
     RESULTS.write_text(json.dumps(results, indent=1) + "\n")
 
     m = results["machine"]
-    print(f"\nPython SDK overhead: {m['cpu']}, {m['cores']} cores, {m['memory_gb']} GB, {m['os']}, Python {m['python']}\n")
+    where = f"{m['cpu']}, {m['cores']} cores, {m['memory_gb']} GB, {m['os']}"
+    print(f"\nPython SDK overhead: {where}, Python {m['python']}\n")
     print("| Collector | Call | p50 | p99 | max |")
     print("|---|---|---|---|---|")
     for name, ops_ in results["latency"].items():
         for op, r in ops_.items():
             if op != "transport":
-                print(f"| {name} | `{op}` | {r['p50_us']} µs | {r['p99_us']} µs | {r['max_us']} µs |")
+                print(
+                    f"| {name} | `{op}` | {r['p50_us']} µs | {r['p99_us']} µs | {r['max_us']} µs |"
+                )
     print("\n| Event loop (1 ms ticker) while emitting | ticks | p50 late | p99 late | max late |")
     print("|---|---|---|---|---|")
     for name, r in results["event_loop"].items():
         print(f"| {name} | {r['ticks']} | {r['p50_ms']} ms | {r['p99_ms']} ms | {r['max_ms']} ms |")
     md = results["memory_down"]
-    print(f"\nMemory, collector down, {md['events']:,} events: {md['retained_mb']} MB retained, "
-          f"{md['dropped']:,} oldest dropped, {md['pending']:,} buffered.")
+    print(
+        f"\nMemory, collector down, {md['events']:,} events: {md['retained_mb']} MB retained, "
+        f"{md['dropped']:,} oldest dropped, {md['pending']:,} buffered."
+    )
     return 0
 
 
