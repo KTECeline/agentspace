@@ -30,9 +30,11 @@ interface Props {
   showFps?: boolean;
   /** Demo only: the current recording, to show the scenario picker. */
   scenario?: string;
+  /** UI load benchmark: measure frame times for this many seconds (bench/ui_load.md). */
+  benchSeconds?: number;
 }
 
-export function OfficeApp({ source, showFps = false, scenario }: Props) {
+export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: Props) {
   const view = useViewMode();
   const { retry, error } = useSource(source);
   const ready = useOffice((s) => s.ready);
@@ -141,7 +143,7 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
             {agentCount === 0 && collectorUrl ? (
               <EmptyOffice collectorUrl={collectorUrl} workspace={workspace} />
             ) : !view.ready ? null : view.mode === "3d" ? (
-              <OfficeScene showFps={showFps} />
+              <OfficeScene showFps={showFps} benchSeconds={benchSeconds} />
             ) : (
               <Grid2D />
             )}

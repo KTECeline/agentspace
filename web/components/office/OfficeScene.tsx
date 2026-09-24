@@ -6,6 +6,7 @@ import { AdaptiveDpr, MapControls } from "@react-three/drei";
 import type { OrthographicCamera } from "three";
 import { useShallow } from "zustand/react/shallow";
 import { Maximize } from "lucide-react";
+import { frameStats } from "@/lib/frameStats";
 import { layoutOffice, type OfficeLayout } from "@/lib/layout";
 import { useOffice } from "@/lib/store";
 import { useThrottled } from "@/lib/useThrottled";
@@ -36,7 +37,7 @@ function useMedia(query: string): boolean {
 }
 
 /** The 3D office. Loaded lazily (next/dynamic) so the 2D view never pays for three.js. */
-export default function OfficeScene({ showFps = false }: { showFps?: boolean }) {
+export default function OfficeScene({ showFps = false, benchSeconds }: { showFps?: boolean; benchSeconds?: number }) {
   const dark = useMedia("(prefers-color-scheme: dark)");
   const reducedMotion = useMedia("(prefers-reduced-motion: reduce)");
   const palette = dark ? SCENE.dark : SCENE.light;
@@ -46,6 +47,10 @@ export default function OfficeScene({ showFps = false }: { showFps?: boolean }) 
   // Written straight to the DOM twice a second, so the FPS meter itself never re-renders React.
   const writeFps = useCallback((fps: number) => {
     if (fpsRef.current) fpsRef.current.textContent = String(fps);
+  }, []);
+  const benchRef = useRef<HTMLOutputElement>(null);
+  const writeBench = useCallback((text: string) => {
+    if (benchRef.current) benchRef.current.textContent = text;
   }, []);
   const select = useOffice((s) => s.select);
 
@@ -103,9 +108,19 @@ export default function OfficeScene({ showFps = false }: { showFps?: boolean }) 
         <CameraRig layout={layout} fitNonce={fitNonce} />
         <LabelProjector anchors={anchors} />
         {showFps && <FpsMeter onFps={writeFps} />}
+        {benchSeconds ? <FrameBench seconds={benchSeconds} onText={writeBench} /> : null}
       </Canvas>
       <LabelLayer layout={layout} anchors={anchors} showNames={showNames} teamCounts={teamCounts} />
 
+      {benchSeconds ? (
+        <output
+          ref={benchRef}
+          aria-live="polite"
+          className="absolute bottom-3 left-3 max-w-[90%] whitespace-pre rounded-md bg-surface/90 px-2 py-1 font-mono text-xs text-foreground"
+        >
+          Benchmark: warming up (5 s)…
+        </output>
+      ) : null}
       <div className="absolute right-3 top-3 flex items-center gap-2">
         {showFps && (
           <span className="rounded-md bg-surface/90 px-2 py-1 font-mono text-xs tabular-nums text-foreground" aria-live="off">
@@ -180,6 +195,44 @@ function FpsMeter({ onFps }: { onFps: (fps: number) => void }) {
       st.frames = 0;
       st.since = now;
     }
+  });
+  return null;
+}
+
+const BENCH_WARMUP_MS = 5000;
+
+/**
+ * UI load benchmark: records frame intervals for `seconds` after a 5 s warm-up, then writes the
+ * summary to the page, to `window.__agentspaceBench` and to the console (see bench/ui_load.md).
+ */
+function FrameBench({ seconds, onText }: { seconds: number; onText: (text: string) => void }) {
+  const stats = useRef({ start: 0, last: 0, done: false });
+  const intervals = useRef<number[]>([]);
+  useFrame(() => {
+    const st = stats.current;
+    if (st.done) return;
+    const now = performance.now();
+    if (!st.start) st.start = now;
+    if (now - st.start < BENCH_WARMUP_MS) {
+      st.last = now;
+      return;
+    }
+    if (intervals.current.length === 0) onText(`Benchmark: measuring for ${seconds} s…`);
+    intervals.current.push(now - st.last);
+    st.last = now;
+    if (now - st.start < BENCH_WARMUP_MS + seconds * 1000) return;
+    st.done = true;
+    const result = {
+      ...frameStats(intervals.current),
+      userAgent: navigator.userAgent,
+      devicePixelRatio: window.devicePixelRatio,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+    };
+    (window as unknown as { __agentspaceBench?: unknown }).__agentspaceBench = result;
+    console.log("[agentspace-bench]", JSON.stringify(result));
+    onText(
+      `Benchmark: ${result.fps} fps · frame p50 ${result.p50_ms} ms · p95 ${result.p95_ms} ms · p99 ${result.p99_ms} ms · max ${result.max_ms} ms · ${result.slow_frames} slow frames (>25 ms) of ${result.frames}`,
+    );
   });
   return null;
 }
