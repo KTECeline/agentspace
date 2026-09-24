@@ -9,6 +9,7 @@ export type AgentSpaceEvent =
   | AgentStatusEvent
   | RunStartedEvent
   | RunFinishedEvent
+  | RunControlEvent
   | StepStartedEvent
   | StepFinishedEvent
   | LlmCallEvent
@@ -28,6 +29,7 @@ export type EventType =
   | "agent.status"
   | "run.started"
   | "run.finished"
+  | "run.control"
   | "step.started"
   | "step.finished"
   | "llm.call"
@@ -56,6 +58,10 @@ export type Content = string | {} | unknown[] | null;
 export type RunFinishedEvent = EventBase & {
   type: "run.finished";
   data: RunFinishedData;
+};
+export type RunControlEvent = EventBase & {
+  type: "run.control";
+  data: RunControlData;
 };
 export type StepStartedEvent = EventBase & {
   type: "step.started";
@@ -186,6 +192,13 @@ export interface RunFinishedData {
   status: "ok" | "error" | "cancelled";
   duration_ms?: number;
   output?: Content;
+}
+export interface RunControlData {
+  action: "pause" | "resume" | "cancel";
+  /**
+   * Who asked (operator name or 'api').
+   */
+  by?: string;
 }
 export interface StepStartedData {
   /**

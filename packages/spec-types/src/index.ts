@@ -8,6 +8,7 @@ export const EVENT_TYPES = [
   "agent.status",
   "run.started",
   "run.finished",
+  "run.control",
   "step.started",
   "step.finished",
   "llm.call",

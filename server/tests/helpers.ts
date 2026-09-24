@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentSpaceEvent } from "@agentspace/spec-types";
 import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
-import { Store } from "../src/store.js";
+import { SqliteStore } from "../src/store/index.js";
 
 const examples = fileURLToPath(new URL("../../spec/v0.1/examples/", import.meta.url));
 
@@ -14,9 +14,9 @@ export function fixture(name: "valid.jsonl" | "invalid.jsonl"): Record<string, u
     .map((l) => JSON.parse(l) as Record<string, unknown>);
 }
 
-export async function makeApp() {
-  const store = new Store(":memory:");
-  const app = await buildApp({ config: loadConfig({}), store, logger: false });
+export async function makeApp(env: Record<string, string> = {}) {
+  const store = new SqliteStore(":memory:");
+  const app = await buildApp({ config: loadConfig(env), store, logger: false });
   return { app, store };
 }
 

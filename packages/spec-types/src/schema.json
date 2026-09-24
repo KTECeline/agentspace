@@ -17,6 +17,9 @@
       "$ref": "#/$defs/RunFinishedEvent"
     },
     {
+      "$ref": "#/$defs/RunControlEvent"
+    },
+    {
       "$ref": "#/$defs/StepStartedEvent"
     },
     {
@@ -55,6 +58,7 @@
         "agent.status",
         "run.started",
         "run.finished",
+        "run.control",
         "step.started",
         "step.finished",
         "llm.call",
@@ -282,6 +286,27 @@
         },
         "output": {
           "$ref": "#/$defs/Content"
+        }
+      }
+    },
+    "RunControlData": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "pause",
+            "resume",
+            "cancel"
+          ]
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Who asked (operator name or 'api')."
         }
       }
     },
@@ -611,6 +636,26 @@
         },
         "data": {
           "$ref": "#/$defs/RunFinishedData"
+        }
+      }
+    },
+    "RunControlEvent": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "run.control"
+        },
+        "data": {
+          "$ref": "#/$defs/RunControlData"
         }
       }
     },

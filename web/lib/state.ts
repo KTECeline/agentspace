@@ -1,4 +1,4 @@
-import type { AgentState, RunState, StoredEvent, WsServerMessage } from "@agentspace/spec-types";
+import type { AgentState, ApprovalState, RunState, StoredEvent, WsServerMessage } from "@agentspace/spec-types";
 
 export const MAX_EVENTS = 500;
 export const MAX_AGENT_EVENTS = 200;
@@ -15,6 +15,8 @@ export interface OfficeState {
   firstSeen: Record<string, number>;
   /** Recent handoffs, for the packet animation. */
   handoffs: StoredEvent[];
+  /** Approvals by id (pending and recently resolved). */
+  approvals: Record<string, ApprovalState>;
   ready: boolean;
 }
 
@@ -25,6 +27,7 @@ export const emptyState: OfficeState = {
   agentEvents: {},
   firstSeen: {},
   handoffs: [],
+  approvals: {},
   ready: false,
 };
 
@@ -69,6 +72,7 @@ export function reduce(state: OfficeState, msg: WsServerMessage): OfficeState {
         agentEvents: appendAgentEvents({}, events),
         firstSeen: withFirstSeen({}, msg.agents.map((a) => a.agent_id)),
         handoffs: [],
+        approvals: Object.fromEntries((msg.approvals ?? []).map((a) => [a.approval_id, a])),
         ready: true,
       };
     }
@@ -92,6 +96,8 @@ export function reduce(state: OfficeState, msg: WsServerMessage): OfficeState {
       };
     case "runs":
       return { ...state, runs: { ...state.runs, ...Object.fromEntries(msg.runs.map((r) => [r.run_id, r])) } };
+    case "approvals":
+      return { ...state, approvals: { ...state.approvals, ...Object.fromEntries(msg.approvals.map((a) => [a.approval_id, a])) } };
   }
 }
 

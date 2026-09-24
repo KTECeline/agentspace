@@ -39,7 +39,7 @@ const event = (seq: number, extra: Partial<StoredEvent> = {}): StoredEvent =>
 
 describe("reduce", () => {
   it("replaces state on snapshot and appends new events only", () => {
-    let s = reduce(emptyState, { type: "snapshot", workspace: "default", agents: [agent("a", "t")], runs: [], events: [event(1), event(2)] });
+    let s = reduce(emptyState, { type: "snapshot", workspace: "default", agents: [agent("a", "t")], runs: [], events: [event(1), event(2)], approvals: [] });
     expect(s.ready).toBe(true);
     s = reduce(s, { type: "events", events: [event(2), event(3)] }); // 2 is a replay after reconnect
     expect(s.events.map((e) => e.seq)).toEqual([1, 2, 3]);

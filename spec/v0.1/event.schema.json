@@ -4,20 +4,51 @@
   "title": "AgentSpaceEvent",
   "description": "One AgentSpace event (spec v0.1). The `type` field selects the shape of `data`.",
   "oneOf": [
-    { "$ref": "#/$defs/AgentRegisteredEvent" },
-    { "$ref": "#/$defs/AgentStatusEvent" },
-    { "$ref": "#/$defs/RunStartedEvent" },
-    { "$ref": "#/$defs/RunFinishedEvent" },
-    { "$ref": "#/$defs/StepStartedEvent" },
-    { "$ref": "#/$defs/StepFinishedEvent" },
-    { "$ref": "#/$defs/LlmCallEvent" },
-    { "$ref": "#/$defs/ToolCallEvent" },
-    { "$ref": "#/$defs/ToolResultEvent" },
-    { "$ref": "#/$defs/MessageEvent" },
-    { "$ref": "#/$defs/HandoffEvent" },
-    { "$ref": "#/$defs/ApprovalRequestedEvent" },
-    { "$ref": "#/$defs/ApprovalResolvedEvent" },
-    { "$ref": "#/$defs/ErrorEvent" }
+    {
+      "$ref": "#/$defs/AgentRegisteredEvent"
+    },
+    {
+      "$ref": "#/$defs/AgentStatusEvent"
+    },
+    {
+      "$ref": "#/$defs/RunStartedEvent"
+    },
+    {
+      "$ref": "#/$defs/RunFinishedEvent"
+    },
+    {
+      "$ref": "#/$defs/RunControlEvent"
+    },
+    {
+      "$ref": "#/$defs/StepStartedEvent"
+    },
+    {
+      "$ref": "#/$defs/StepFinishedEvent"
+    },
+    {
+      "$ref": "#/$defs/LlmCallEvent"
+    },
+    {
+      "$ref": "#/$defs/ToolCallEvent"
+    },
+    {
+      "$ref": "#/$defs/ToolResultEvent"
+    },
+    {
+      "$ref": "#/$defs/MessageEvent"
+    },
+    {
+      "$ref": "#/$defs/HandoffEvent"
+    },
+    {
+      "$ref": "#/$defs/ApprovalRequestedEvent"
+    },
+    {
+      "$ref": "#/$defs/ApprovalResolvedEvent"
+    },
+    {
+      "$ref": "#/$defs/ErrorEvent"
+    }
   ],
   "$defs": {
     "EventType": {
@@ -27,6 +58,7 @@
         "agent.status",
         "run.started",
         "run.finished",
+        "run.control",
         "step.started",
         "step.finished",
         "llm.call",
@@ -41,7 +73,16 @@
     },
     "AgentStatus": {
       "type": "string",
-      "enum": ["idle", "thinking", "using_tool", "waiting", "blocked", "waiting_human", "done", "error"]
+      "enum": [
+        "idle",
+        "thinking",
+        "using_tool",
+        "waiting",
+        "blocked",
+        "waiting_human",
+        "done",
+        "error"
+      ]
     },
     "Id": {
       "type": "string",
@@ -49,266 +90,788 @@
       "maxLength": 128
     },
     "NullableId": {
-      "oneOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Id"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "Content": {
       "description": "Full prompt/output/argument content. Only present when the SDK runs with capture_content=True, after redaction.",
-      "oneOf": [{ "type": "string" }, { "type": "object" }, { "type": "array" }, { "type": "null" }]
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        },
+        {
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "EventBase": {
       "type": "object",
       "description": "Fields every event carries.",
-      "required": ["spec_version", "id", "type", "ts", "workspace", "run_id", "agent_id", "team_id", "parent_id"],
+      "required": [
+        "spec_version",
+        "id",
+        "type",
+        "ts",
+        "workspace",
+        "run_id",
+        "agent_id",
+        "team_id",
+        "parent_id"
+      ],
       "properties": {
-        "spec_version": { "type": "string", "const": "0.1" },
-        "id": { "$ref": "#/$defs/Id", "description": "Unique event id (used for de-duplication)." },
-        "type": { "$ref": "#/$defs/EventType" },
-        "ts": { "type": "string", "format": "date-time", "description": "RFC 3339 timestamp, UTC." },
-        "workspace": { "$ref": "#/$defs/Id" },
-        "run_id": { "$ref": "#/$defs/Id", "description": "OTel: trace id / gen_ai.conversation.id." },
-        "agent_id": { "$ref": "#/$defs/NullableId", "description": "OTel: gen_ai.agent.id. Null for run-level events with no single agent." },
-        "team_id": { "$ref": "#/$defs/NullableId", "description": "Becomes a department zone in the office." },
-        "parent_id": { "$ref": "#/$defs/NullableId", "description": "The enclosing step's step_id (OTel: parent span id)." },
-        "tokens_in": { "type": "integer", "minimum": 0, "description": "OTel: gen_ai.usage.input_tokens." },
-        "tokens_out": { "type": "integer", "minimum": 0, "description": "OTel: gen_ai.usage.output_tokens." },
-        "cost_usd": { "type": "number", "minimum": 0 },
-        "model": { "type": "string", "maxLength": 256, "description": "OTel: gen_ai.response.model (or gen_ai.request.model)." },
-        "summary": { "type": "string", "maxLength": 500, "description": "Short, human-readable description. Always safe to display." },
+        "spec_version": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "id": {
+          "$ref": "#/$defs/Id",
+          "description": "Unique event id (used for de-duplication)."
+        },
+        "type": {
+          "$ref": "#/$defs/EventType"
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 timestamp, UTC."
+        },
+        "workspace": {
+          "$ref": "#/$defs/Id"
+        },
+        "run_id": {
+          "$ref": "#/$defs/Id",
+          "description": "OTel: trace id / gen_ai.conversation.id."
+        },
+        "agent_id": {
+          "$ref": "#/$defs/NullableId",
+          "description": "OTel: gen_ai.agent.id. Null for run-level events with no single agent."
+        },
+        "team_id": {
+          "$ref": "#/$defs/NullableId",
+          "description": "Becomes a department zone in the office."
+        },
+        "parent_id": {
+          "$ref": "#/$defs/NullableId",
+          "description": "The enclosing step's step_id (OTel: parent span id)."
+        },
+        "tokens_in": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "OTel: gen_ai.usage.input_tokens."
+        },
+        "tokens_out": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "OTel: gen_ai.usage.output_tokens."
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "OTel: gen_ai.response.model (or gen_ai.request.model)."
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Short, human-readable description. Always safe to display."
+        },
         "attributes": {
           "type": "object",
           "description": "Free-form extra metadata (string/number/bool values). OTel attributes land here on OTLP import.",
-          "additionalProperties": { "type": ["string", "number", "boolean"] }
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
         }
       }
     },
     "AgentRegisteredData": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "type": "string", "maxLength": 256, "description": "OTel: gen_ai.agent.name." },
-        "team_name": { "type": "string", "maxLength": 256 },
-        "role": { "type": "string", "maxLength": 256 },
-        "description": { "type": "string", "maxLength": 2000, "description": "OTel: gen_ai.agent.description." },
-        "framework": { "type": "string", "maxLength": 64, "description": "e.g. langgraph, crewai, manual." }
+        "name": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "OTel: gen_ai.agent.name."
+        },
+        "team_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "OTel: gen_ai.agent.description."
+        },
+        "framework": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "e.g. langgraph, crewai, manual."
+        }
       }
     },
     "AgentStatusData": {
       "type": "object",
-      "required": ["status"],
+      "required": [
+        "status"
+      ],
       "properties": {
-        "status": { "$ref": "#/$defs/AgentStatus" },
-        "detail": { "type": "string", "maxLength": 500 }
+        "status": {
+          "$ref": "#/$defs/AgentStatus"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 500
+        }
       }
     },
     "RunStartedData": {
       "type": "object",
       "properties": {
-        "name": { "type": "string", "maxLength": 256, "description": "OTel: gen_ai.workflow.name." },
-        "framework": { "type": "string", "maxLength": 64 },
-        "input": { "$ref": "#/$defs/Content" }
+        "name": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "OTel: gen_ai.workflow.name."
+        },
+        "framework": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "input": {
+          "$ref": "#/$defs/Content"
+        }
       }
     },
     "RunFinishedData": {
       "type": "object",
-      "required": ["status"],
+      "required": [
+        "status"
+      ],
       "properties": {
-        "status": { "type": "string", "enum": ["ok", "error", "cancelled"] },
-        "duration_ms": { "type": "number", "minimum": 0 },
-        "output": { "$ref": "#/$defs/Content" }
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error",
+            "cancelled"
+          ]
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output": {
+          "$ref": "#/$defs/Content"
+        }
+      }
+    },
+    "RunControlData": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "pause",
+            "resume",
+            "cancel"
+          ]
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Who asked (operator name or 'api')."
+        }
       }
     },
     "StepStartedData": {
       "type": "object",
-      "required": ["step_id", "name"],
+      "required": [
+        "step_id",
+        "name"
+      ],
       "properties": {
-        "step_id": { "$ref": "#/$defs/Id", "description": "OTel: span id." },
-        "name": { "type": "string", "maxLength": 256 },
-        "kind": { "type": "string", "enum": ["agent", "chain", "custom"], "description": "agent ≈ OTel invoke_agent span." }
+        "step_id": {
+          "$ref": "#/$defs/Id",
+          "description": "OTel: span id."
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "chain",
+            "custom"
+          ],
+          "description": "agent \u2248 OTel invoke_agent span."
+        }
       }
     },
     "StepFinishedData": {
       "type": "object",
-      "required": ["step_id", "name", "ok"],
+      "required": [
+        "step_id",
+        "name",
+        "ok"
+      ],
       "properties": {
-        "step_id": { "$ref": "#/$defs/Id" },
-        "name": { "type": "string", "maxLength": 256 },
-        "ok": { "type": "boolean" },
-        "duration_ms": { "type": "number", "minimum": 0 },
-        "error": { "type": "string", "maxLength": 2000 }
+        "step_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 2000
+        }
       }
     },
     "LlmCallData": {
       "type": "object",
       "properties": {
-        "provider": { "type": "string", "maxLength": 64, "description": "OTel: gen_ai.provider.name." },
-        "operation": { "type": "string", "maxLength": 64, "description": "OTel: gen_ai.operation.name (chat, text_completion, ...)." },
-        "duration_ms": { "type": "number", "minimum": 0 },
-        "finish_reason": { "type": "string", "maxLength": 64, "description": "OTel: gen_ai.response.finish_reasons[0]." },
-        "input": { "$ref": "#/$defs/Content", "description": "OTel: gen_ai.input.messages." },
-        "output": { "$ref": "#/$defs/Content", "description": "OTel: gen_ai.output.messages." }
+        "provider": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "OTel: gen_ai.provider.name."
+        },
+        "operation": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "OTel: gen_ai.operation.name (chat, text_completion, ...)."
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "finish_reason": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "OTel: gen_ai.response.finish_reasons[0]."
+        },
+        "input": {
+          "$ref": "#/$defs/Content",
+          "description": "OTel: gen_ai.input.messages."
+        },
+        "output": {
+          "$ref": "#/$defs/Content",
+          "description": "OTel: gen_ai.output.messages."
+        }
       }
     },
     "ToolCallData": {
       "type": "object",
-      "required": ["tool_name", "call_id"],
+      "required": [
+        "tool_name",
+        "call_id"
+      ],
       "properties": {
-        "tool_name": { "type": "string", "maxLength": 256, "description": "OTel: gen_ai.tool.name." },
-        "call_id": { "$ref": "#/$defs/Id", "description": "OTel: gen_ai.tool.call.id." },
-        "arguments": { "$ref": "#/$defs/Content", "description": "OTel: gen_ai.tool.call.arguments." }
+        "tool_name": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "OTel: gen_ai.tool.name."
+        },
+        "call_id": {
+          "$ref": "#/$defs/Id",
+          "description": "OTel: gen_ai.tool.call.id."
+        },
+        "arguments": {
+          "$ref": "#/$defs/Content",
+          "description": "OTel: gen_ai.tool.call.arguments."
+        }
       }
     },
     "ToolResultData": {
       "type": "object",
-      "required": ["tool_name", "call_id", "ok"],
+      "required": [
+        "tool_name",
+        "call_id",
+        "ok"
+      ],
       "properties": {
-        "tool_name": { "type": "string", "maxLength": 256 },
-        "call_id": { "$ref": "#/$defs/Id" },
-        "ok": { "type": "boolean" },
-        "duration_ms": { "type": "number", "minimum": 0 },
-        "error": { "type": "string", "maxLength": 2000 },
-        "result": { "$ref": "#/$defs/Content", "description": "OTel: gen_ai.tool.call.result." }
+        "tool_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "call_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "result": {
+          "$ref": "#/$defs/Content",
+          "description": "OTel: gen_ai.tool.call.result."
+        }
       }
     },
     "MessageData": {
       "type": "object",
       "properties": {
-        "from_agent_id": { "$ref": "#/$defs/NullableId" },
-        "to_agent_id": { "$ref": "#/$defs/NullableId" },
-        "role": { "type": "string", "maxLength": 32 },
-        "text": { "$ref": "#/$defs/Content" }
+        "from_agent_id": {
+          "$ref": "#/$defs/NullableId"
+        },
+        "to_agent_id": {
+          "$ref": "#/$defs/NullableId"
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "text": {
+          "$ref": "#/$defs/Content"
+        }
       }
     },
     "HandoffData": {
       "type": "object",
-      "required": ["from_agent_id", "to_agent_id"],
+      "required": [
+        "from_agent_id",
+        "to_agent_id"
+      ],
       "properties": {
-        "from_agent_id": { "$ref": "#/$defs/Id" },
-        "to_agent_id": { "$ref": "#/$defs/Id" },
-        "reason": { "type": "string", "maxLength": 500 }
+        "from_agent_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "to_agent_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        }
       }
     },
     "ApprovalRequestedData": {
       "type": "object",
-      "required": ["approval_id", "reason"],
+      "required": [
+        "approval_id",
+        "reason"
+      ],
       "properties": {
-        "approval_id": { "$ref": "#/$defs/Id" },
-        "reason": { "type": "string", "maxLength": 2000 },
-        "payload": { "$ref": "#/$defs/Content" },
-        "timeout_s": { "type": "number", "minimum": 0 }
+        "approval_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "payload": {
+          "$ref": "#/$defs/Content"
+        },
+        "timeout_s": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "ApprovalResolvedData": {
       "type": "object",
-      "required": ["approval_id", "decision"],
+      "required": [
+        "approval_id",
+        "decision"
+      ],
       "properties": {
-        "approval_id": { "$ref": "#/$defs/Id" },
-        "decision": { "type": "string", "enum": ["approved", "rejected", "timeout"] },
-        "comment": { "type": "string", "maxLength": 2000 },
-        "resolved_by": { "type": "string", "maxLength": 256 }
+        "approval_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "rejected",
+            "timeout"
+          ]
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "resolved_by": {
+          "type": "string",
+          "maxLength": 256
+        }
       }
     },
     "ErrorData": {
       "type": "object",
-      "required": ["message"],
+      "required": [
+        "message"
+      ],
       "properties": {
-        "message": { "type": "string", "maxLength": 2000 },
-        "kind": { "type": "string", "maxLength": 256, "description": "Exception class name (OTel: error.type)." },
-        "stack": { "type": "string", "maxLength": 16000 }
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "kind": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Exception class name (OTel: error.type)."
+        },
+        "stack": {
+          "type": "string",
+          "maxLength": 16000
+        }
       }
     },
     "AgentRegisteredEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "agent.registered" }, "data": { "$ref": "#/$defs/AgentRegisteredData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "agent.registered"
+        },
+        "data": {
+          "$ref": "#/$defs/AgentRegisteredData"
+        }
+      }
     },
     "AgentStatusEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "agent.status" }, "data": { "$ref": "#/$defs/AgentStatusData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "agent.status"
+        },
+        "data": {
+          "$ref": "#/$defs/AgentStatusData"
+        }
+      }
     },
     "RunStartedEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "run.started" }, "data": { "$ref": "#/$defs/RunStartedData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "run.started"
+        },
+        "data": {
+          "$ref": "#/$defs/RunStartedData"
+        }
+      }
     },
     "RunFinishedEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "run.finished" }, "data": { "$ref": "#/$defs/RunFinishedData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "run.finished"
+        },
+        "data": {
+          "$ref": "#/$defs/RunFinishedData"
+        }
+      }
+    },
+    "RunControlEvent": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "run.control"
+        },
+        "data": {
+          "$ref": "#/$defs/RunControlData"
+        }
+      }
     },
     "StepStartedEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "step.started" }, "data": { "$ref": "#/$defs/StepStartedData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "step.started"
+        },
+        "data": {
+          "$ref": "#/$defs/StepStartedData"
+        }
+      }
     },
     "StepFinishedEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "step.finished" }, "data": { "$ref": "#/$defs/StepFinishedData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "step.finished"
+        },
+        "data": {
+          "$ref": "#/$defs/StepFinishedData"
+        }
+      }
     },
     "LlmCallEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "llm.call" }, "data": { "$ref": "#/$defs/LlmCallData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "llm.call"
+        },
+        "data": {
+          "$ref": "#/$defs/LlmCallData"
+        }
+      }
     },
     "ToolCallEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "tool.call" }, "data": { "$ref": "#/$defs/ToolCallData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool.call"
+        },
+        "data": {
+          "$ref": "#/$defs/ToolCallData"
+        }
+      }
     },
     "ToolResultEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "tool.result" }, "data": { "$ref": "#/$defs/ToolResultData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool.result"
+        },
+        "data": {
+          "$ref": "#/$defs/ToolResultData"
+        }
+      }
     },
     "MessageEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "message" }, "data": { "$ref": "#/$defs/MessageData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "message"
+        },
+        "data": {
+          "$ref": "#/$defs/MessageData"
+        }
+      }
     },
     "HandoffEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "handoff" }, "data": { "$ref": "#/$defs/HandoffData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "handoff"
+        },
+        "data": {
+          "$ref": "#/$defs/HandoffData"
+        }
+      }
     },
     "ApprovalRequestedEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "approval.requested" }, "data": { "$ref": "#/$defs/ApprovalRequestedData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "approval.requested"
+        },
+        "data": {
+          "$ref": "#/$defs/ApprovalRequestedData"
+        }
+      }
     },
     "ApprovalResolvedEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "approval.resolved" }, "data": { "$ref": "#/$defs/ApprovalResolvedData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "approval.resolved"
+        },
+        "data": {
+          "$ref": "#/$defs/ApprovalResolvedData"
+        }
+      }
     },
     "ErrorEvent": {
-      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventBase"
+        }
+      ],
       "type": "object",
-      "required": ["type", "data"],
-      "properties": { "type": { "const": "error" }, "data": { "$ref": "#/$defs/ErrorData" } }
+      "required": [
+        "type",
+        "data"
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "data": {
+          "$ref": "#/$defs/ErrorData"
+        }
+      }
     },
     "IngestBatch": {
       "type": "object",
       "description": "Body of POST /v1/events.",
-      "required": ["events"],
+      "required": [
+        "events"
+      ],
       "properties": {
         "events": {
           "type": "array",
           "maxItems": 1000,
-          "items": { "$ref": "#" }
+          "items": {
+            "$ref": "#"
+          }
         }
       }
     }

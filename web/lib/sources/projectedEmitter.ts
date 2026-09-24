@@ -13,7 +13,7 @@ export class ProjectedEmitter {
 
   snapshot(): WsServerMessage {
     this.projector = new Projector();
-    return { type: "snapshot", workspace: this.workspace, agents: [], runs: [], events: [] };
+    return { type: "snapshot", workspace: this.workspace, agents: [], runs: [], events: [], approvals: [] };
   }
 
   emit(events: AgentSpaceEvent[]): WsServerMessage[] {

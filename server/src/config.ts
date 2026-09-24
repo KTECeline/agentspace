@@ -12,6 +12,14 @@ export interface Config {
   otlpCaptureContent: boolean;
   /** OTLP: how long to hold a span waiting for its parent (ms). */
   otlpHoldMs: number;
+  /** postgres://... to use Postgres instead of SQLite. */
+  databaseUrl: string | null;
+  /** "workspace:key,workspace2:key2,*:adminkey" (empty = ingest open). */
+  apiKeys: string;
+  /** Token for operator actions (approve, pause, cancel) from the browser. */
+  operatorToken: string | null;
+  /** Anyone can read; approval payloads hidden; no operator actions. */
+  publicReadonly: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -25,5 +33,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: env.LOG_LEVEL ?? "info",
     otlpCaptureContent: ["1", "true", "yes"].includes((env.AGENTSPACE_OTLP_CAPTURE_CONTENT ?? "").toLowerCase()),
     otlpHoldMs: Number(env.AGENTSPACE_OTLP_HOLD_MS ?? 10_000),
+    databaseUrl: env.AGENTSPACE_DATABASE_URL || null,
+    apiKeys: env.AGENTSPACE_API_KEYS ?? "",
+    operatorToken: env.AGENTSPACE_OPERATOR_TOKEN || null,
+    publicReadonly: ["1", "true", "yes"].includes((env.AGENTSPACE_PUBLIC_READONLY ?? "").toLowerCase()),
   };
 }

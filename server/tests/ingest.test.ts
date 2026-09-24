@@ -70,7 +70,7 @@ describe("projections", () => {
 
     await post([ev({ type: "run.finished", data: { status: "ok", duration_ms: 1234 } })]);
     const runs = (await app.inject("/v1/workspaces/default/runs")).json() as RunState[];
-    expect(runs[0]).toMatchObject({ run_id: "run-1", name: "demo", status: "ok", duration_ms: 1234, event_count: 7, tokens_in: 150 });
+    expect(runs[0]).toMatchObject({ run_id: "run-1", name: "demo", status: "ok", duration_ms: 1234, event_count: 7, tokens_in: 150, control: "running" });
   });
 
   it("creates a placeholder agent if events arrive before registration", async () => {
@@ -105,8 +105,7 @@ describe("retention", () => {
     const { app: a, store } = await makeApp();
     app = a;
     await post([ev({ type: "message", data: {} })]);
-    store.db.prepare("UPDATE events SET received_at = 0").run();
-    expect(store.prune(7)).toBe(1);
-    expect(store.recentEvents("default")).toHaveLength(0);
+    expect(await store.prune(7, new Date(Date.now() + 8 * 86_400_000))).toBe(1);
+    expect(await store.recentEvents("default")).toHaveLength(0);
   });
 });

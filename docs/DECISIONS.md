@@ -198,3 +198,24 @@ What broke and what changed:
 - **Output tokens undercounted:** one API response arrives as several `AssistantMessage`s with the same id, and the early ones carry partial usage. **Decision:** merge by message id and emit once the message is complete (on a new id, PreToolUse, SubagentStart, Stop, or the result).
 - **The "reported" cost from Claude Code is only an estimate** when a gateway is in front of it. Phase 4b's cost `source` should distinguish "reported by the framework" from "billed by the provider", and not treat a gateway-routed framework cost as authoritative.
 - **Verified live:** handoff to the subagent, the subagent's tool call, the "needs you" status during the permission request, and completion. For Claude Code: hooks for SessionStart through SessionEnd, with metadata-only tool summaries.
+
+## D-030 · `run.control` event (additive change to the v0.1 draft) (2026-09-24)
+**Decision:** a new event type `run.control` with `data.action = pause | resume | cancel` (and optional `by`). The collector emits it when an operator controls a run, in the same transaction as the state change. v0.1 hasn't been released, so this is an additive change and all existing events stay valid.
+**Why:** pauses and cancels have to appear in the log and in replays (Phase 4b), and so far the spec had no way to express them.
+
+## D-031 · Async `Store` interface with a shared contract test suite (2026-09-24)
+**Decision:**
+- `server/src/store/types.ts` defines an async interface covering events, projections, approvals and run controls.
+- `SqliteStore` implements it, and `PostgresStore` implements the same interface.
+- `tests/store.test.ts` is the contract. It runs against every backend: SQLite always, and Postgres when `TEST_DATABASE_URL` is set.
+- Approval resolution and control changes are single transactions that also insert their event. The resolved-event id is deterministic (`approval-resolved-<id>`), so a double resolve can't produce two events even under a race. A decision that arrives after the deadline records a timeout and returns 409.
+
+## D-032 · Auth model (2026-09-24)
+**Decision:**
+- Workspace API keys (`AGENTSPACE_API_KEYS=ws:key,…`, where `*` means all workspaces) cover ingest and the SDK's own polling.
+- The operator token (`AGENTSPACE_OPERATOR_TOKEN`) covers approve/reject/pause/cancel and all reads. A workspace key may also operate its own workspace, for automation.
+- As soon as anything is configured, reads need a token.
+- Public read-only mode (`AGENTSPACE_PUBLIC_READONLY=true`) allows open reads, strips approval payloads from every read path (REST, WebSocket, the event log), and returns 403 for all operator actions, even with a token.
+- WebSocket auth is the first message (`{"type":"auth","token"}`), because browsers can't set headers on WebSockets and tokens in URLs end up in logs.
+- Tokens are compared in constant time.
+- With nothing configured, everything stays open: the local two-minute setup is unchanged.

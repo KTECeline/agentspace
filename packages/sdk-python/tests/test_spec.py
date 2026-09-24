@@ -10,7 +10,8 @@ from agentspace.models import AgentSpaceEvent
 
 def test_valid_examples_pass(validator: Draft202012Validator) -> None:
     events = load_jsonl("valid.jsonl")
-    assert len({e["type"] for e in events}) == 14, "examples should cover every event type"
+    schema_types = set(validator.schema["$defs"]["EventType"]["enum"])
+    assert {e["type"] for e in events} == schema_types, "examples should cover every event type"
     assert_valid_events(validator, events)
 
 

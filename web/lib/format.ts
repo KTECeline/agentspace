@@ -18,6 +18,8 @@ export function describe(e: StoredEvent): string {
       return `Run started${e.data.name ? `: ${e.data.name}` : ""}`;
     case "run.finished":
       return `Run ${e.data.status}${e.data.duration_ms != null ? ` in ${formatDuration(e.data.duration_ms)}` : ""}`;
+    case "run.control":
+      return `Run ${e.data.action === "pause" ? "paused" : e.data.action === "resume" ? "resumed" : "cancelled"}${e.data.by ? ` by ${e.data.by}` : ""}`;
     case "agent.registered":
       return `Joined${e.data.role ? ` as ${e.data.role}` : ""}`;
     case "agent.status":

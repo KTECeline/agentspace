@@ -13,6 +13,7 @@ class EventType(
             "agent.status",
             "run.started",
             "run.finished",
+            "run.control",
             "step.started",
             "step.finished",
             "llm.call",
@@ -31,6 +32,7 @@ class EventType(
         "agent.status",
         "run.started",
         "run.finished",
+        "run.control",
         "step.started",
         "step.finished",
         "llm.call",
@@ -146,6 +148,13 @@ class RunFinishedData(BaseModel):
     output: Content | None = None
 
 
+class RunControlData(BaseModel):
+    action: Literal["pause", "resume", "cancel"]
+    by: Annotated[
+        str | None, Field(description="Who asked (operator name or 'api').", max_length=256)
+    ] = None
+
+
 class StepStartedData(BaseModel):
     step_id: Annotated[Id, Field(description="OTel: span id.")]
     name: Annotated[str, Field(max_length=256)]
@@ -253,6 +262,11 @@ class RunFinishedEvent(EventBase):
     data: RunFinishedData
 
 
+class RunControlEvent(EventBase):
+    type: Literal["run.control"]
+    data: RunControlData
+
+
 class StepStartedEvent(EventBase):
     type: Literal["step.started"]
     data: StepStartedData
@@ -309,6 +323,7 @@ class AgentSpaceEvent(
         | AgentStatusEvent
         | RunStartedEvent
         | RunFinishedEvent
+        | RunControlEvent
         | StepStartedEvent
         | StepFinishedEvent
         | LlmCallEvent
@@ -326,6 +341,7 @@ class AgentSpaceEvent(
         | AgentStatusEvent
         | RunStartedEvent
         | RunFinishedEvent
+        | RunControlEvent
         | StepStartedEvent
         | StepFinishedEvent
         | LlmCallEvent

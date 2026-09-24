@@ -36,6 +36,7 @@ export class Projector {
         tokens_in: tokensIn,
         tokens_out: tokensOut,
         cost_usd: cost,
+        control: "running",
       };
     } else {
       run = {
@@ -50,6 +51,9 @@ export class Projector {
       run = { ...run, name: ev.data.name ?? run.name, framework: ev.data.framework ?? run.framework, started_at: ev.ts, status: "running" };
     } else if (ev.type === "run.finished") {
       run = { ...run, status: ev.data.status, finished_at: ev.ts, duration_ms: ev.data.duration_ms ?? null };
+    } else if (ev.type === "run.control" && run.control !== "cancelled") {
+      const action = ev.data.action;
+      run = { ...run, control: action === "pause" ? "paused" : action === "resume" ? "running" : "cancelled" };
     }
     this.runs.set(rkey, run);
     this.runOrder.set(rkey, this.clock);
