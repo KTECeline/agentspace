@@ -5,8 +5,10 @@ import type {
   ApprovalStatus,
   RunControl,
   RunState,
+  StatsResponse,
   StoredEvent,
 } from "@agentspace/spec-types";
+import type { StatsWindow } from "./stats.js";
 
 export interface InsertResult {
   inserted: StoredEvent[];
@@ -48,6 +50,8 @@ export interface Store {
   agents(workspace: string): Promise<AgentState[]>;
   runs(workspace: string, limit?: number): Promise<RunState[]>;
   run(workspace: string, runId: string): Promise<RunState | undefined>;
+  /** Dashboard aggregates for events with since <= ts < until. Build them with `computeStats`. */
+  stats(workspace: string, window: StatsWindow): Promise<StatsResponse>;
   runEvents(workspace: string, runId: string, after?: number, limit?: number): Promise<StoredEvent[]>;
   recentEvents(workspace: string, limit?: number): Promise<StoredEvent[]>;
   workspaces(): Promise<{ workspace: string; agents: number }[]>;

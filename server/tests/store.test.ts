@@ -46,6 +46,67 @@ describe.each(backends)("%s store", (_name, make) => {
     expect(await store.run("default", "run-1")).toMatchObject(totals);
   });
 
+  it("aggregates stats for the dashboard within a time window", async () => {
+    const at = (m: number) => `2026-09-2${m < 60 ? "3" : "4"}T10:${String(m % 60).padStart(2, "0")}:00.000Z`;
+    const llm = (run_id: string, agent_id: string, model: string, ts: string, extra: Partial<AgentSpaceEvent>, duration_ms: number) =>
+      ev({ type: "llm.call", run_id, agent_id, model, ts, ...extra, data: { duration_ms } } as never);
+    await store.insert([
+      ev({ type: "run.started", run_id: "r1", ts: at(0), data: { name: "one" } }),
+      ev({ type: "agent.registered", run_id: "r1", agent_id: "a", ts: at(0), data: { name: "Alice" } }),
+      llm("r1", "a", "claude-haiku-4-5", at(1), { tokens_in: 100, tokens_out: 10, cost_usd: 0.3, cost_source: "estimated" }, 100),
+      llm("r1", "b", "gpt-5", at(2), { tokens_in: 50, tokens_out: 5, cost_usd: 0.1 }, 300),
+      llm("r1", "b", "scripted-fake", at(3), { tokens_in: 10 }, 200),
+      ev({ type: "tool.result", run_id: "r1", agent_id: "a", ts: at(4), data: { tool_name: "search", call_id: "c1", ok: true, duration_ms: 50 } }),
+      ev({ type: "tool.result", run_id: "r1", agent_id: "a", ts: at(5), data: { tool_name: "search", call_id: "c2", ok: false, duration_ms: 900 } }),
+      ev({ type: "tool.result", run_id: "r1", agent_id: "a", ts: at(6), data: { tool_name: "fetch", call_id: "c3", ok: true, duration_ms: 20 } }),
+      ev({ type: "error", run_id: "r1", agent_id: "a", ts: at(7), data: { message: "boom" } }),
+      ev({ type: "run.finished", run_id: "r1", ts: at(8), data: { status: "error" } }),
+      ev({ type: "run.started", run_id: "r2", ts: at(60), data: { name: "two" } }),
+      llm("r2", "a", "claude-haiku-4-5", at(61), { tokens_in: 1000, tokens_out: 100, cost_usd: 1, cost_source: "estimated" }, 400),
+      ev({ type: "run.finished", run_id: "r2", ts: at(62), data: { status: "ok" } }),
+    ]);
+
+    const all = await store.stats("default", { since: null, until: null });
+    expect(all.totals).toMatchObject({
+      calls: 4,
+      tokens_in: 1160,
+      cost_usd: 1.4,
+      cost_estimated_usd: 1.3,
+      unpriced_calls: 1,
+      runs: 2,
+      runs_ok: 1,
+      runs_failed: 1,
+      error_rate: 0.5,
+      errors: 1,
+      tool_calls: 3,
+      tool_errors: 1,
+      p50_ms: 200,
+      p95_ms: 400,
+    });
+    expect(all.by_run.map((r) => [r.run_id, r.name, r.status, r.calls, r.errors])).toEqual([
+      ["r2", "two", "ok", 1, 0],
+      ["r1", "one", "error", 3, 1],
+    ]);
+    expect(all.by_agent.map((a) => [a.agent_id, a.name, a.calls, a.errors])).toEqual([
+      ["a", "Alice", 2, 1],
+      ["b", "b", 2, 0],
+    ]);
+    expect(all.by_model.map((m) => m.model)).toEqual(["claude-haiku-4-5", "gpt-5", "scripted-fake"]);
+    expect(all.by_day.map((d) => [d.day, d.calls])).toEqual([
+      ["2026-09-23", 3],
+      ["2026-09-24", 1],
+    ]);
+    expect(all.slowest_tools).toEqual([
+      { tool_name: "search", calls: 2, errors: 1, p50_ms: 50, p95_ms: 900, max_ms: 900 },
+      { tool_name: "fetch", calls: 1, errors: 0, p50_ms: 20, p95_ms: 20, max_ms: 20 },
+    ]);
+
+    const day1 = await store.stats("default", { since: "2026-09-23T00:00:00.000Z", until: "2026-09-24T00:00:00.000Z" });
+    expect(day1.totals).toMatchObject({ calls: 3, runs: 1, cost_usd: 0.4 });
+    expect(day1.by_run.map((r) => r.run_id)).toEqual(["r1"]);
+    expect((await store.stats("other", { since: null, until: null })).totals.calls).toBe(0);
+  });
+
   it("inserts idempotently and projects agents and runs", async () => {
     const batch = [ev({ type: "run.started", data: { name: "r" } }), ev({ type: "agent.status", agent_id: "a", data: { status: "thinking" } })];
     const first = await store.insert(batch);

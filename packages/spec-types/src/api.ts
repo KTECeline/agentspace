@@ -109,6 +109,81 @@ export interface PriceTable {
   models: ModelPrice[];
 }
 
+/** Cost and token totals over a set of `llm.call` events. */
+export interface CostTotals {
+  calls: number;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  cost_estimated_usd: number;
+  unpriced_calls: number;
+}
+
+/** Latency of a set of calls, in ms (null when none had a duration). */
+export interface Latency {
+  p50_ms: number | null;
+  p95_ms: number | null;
+}
+
+export interface RunStats extends CostTotals {
+  run_id: string;
+  name: string | null;
+  status: RunStatus;
+  started_at: string | null;
+  duration_ms: number | null;
+  errors: number;
+}
+
+export interface AgentStats extends CostTotals, Latency {
+  agent_id: string;
+  name: string;
+  team_id: string | null;
+  errors: number;
+}
+
+export interface ModelStats extends CostTotals, Latency {
+  /** "unknown" when the event carried no model. */
+  model: string;
+}
+
+export interface ToolStats extends Latency {
+  tool_name: string;
+  calls: number;
+  errors: number;
+  max_ms: number | null;
+}
+
+/**
+ * GET /v1/workspaces/:ws/stats?since=&until= — aggregates for the cost dashboard.
+ * Covers events with since <= ts < until (both optional, ISO 8601). Aggregates only: no content.
+ */
+export interface StatsResponse {
+  workspace: string;
+  since: string | null;
+  until: string | null;
+  totals: CostTotals &
+    Latency & {
+      runs: number;
+      runs_ok: number;
+      runs_failed: number;
+      runs_cancelled: number;
+      /** runs_failed / (runs_ok + runs_failed); null when no run finished. */
+      error_rate: number | null;
+      errors: number;
+      tool_calls: number;
+      tool_errors: number;
+    };
+  /** Most recent first, at most 200. */
+  by_run: RunStats[];
+  /** Highest cost first. */
+  by_agent: AgentStats[];
+  by_model: ModelStats[];
+  /** Cost per UTC day, oldest first. */
+  by_day: (Pick<CostTotals, "calls" | "cost_usd" | "cost_estimated_usd"> & { day: string })[];
+  /** Slowest first (by p95), at most 10. */
+  slowest_tools: ToolStats[];
+}
+
 /** GET /v1/info: what the browser needs to know before connecting. */
 export interface ServerInfo {
   version: string;

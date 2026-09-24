@@ -239,6 +239,15 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
     },
   );
 
+  // Aggregates only (no content), so they're the same in public mode.
+  app.get<WsParams & { Querystring: { since?: string; until?: string } }>("/v1/workspaces/:ws/stats", async (req, reply) => {
+    if (!readable(req, reply)) return reply;
+    const since = isoOrNull(req.query.since);
+    const until = isoOrNull(req.query.until);
+    if (since === undefined || until === undefined) return reply.code(400).send({ error: "since and until must be ISO 8601 timestamps" });
+    return db.stats(req.params.ws, { since, until });
+  });
+
   app.get<WsParams & { Querystring: { limit?: string } }>("/v1/workspaces/:ws/events", async (req, reply) =>
     readable(req, reply) ? (await db.recentEvents(req.params.ws, clamp(req.query.limit, 200, 2000))).map(redactEvent) : reply,
   );
@@ -369,4 +378,11 @@ function clamp(raw: string | undefined, fallback: number, max: number): number {
   const n = Number(raw);
   if (raw === undefined || !Number.isFinite(n) || n < 0) return fallback;
   return Math.min(Math.floor(n), max);
+}
+
+/** A query timestamp as canonical ISO (null when absent, undefined when invalid). */
+function isoOrNull(v: string | undefined): string | null | undefined {
+  if (v === undefined || v === "") return null;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
 }

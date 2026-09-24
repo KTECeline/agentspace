@@ -13,6 +13,7 @@ import type {
   RunStatus,
   StoredEvent,
 } from "@agentspace/spec-types";
+import { computeStats, type ErrorRow, type LlmRow, type StatsWindow } from "./stats.js";
 import type { ControlAction, ControlOutcome, InsertResult, ResolveOutcome, Store } from "./types.js";
 
 /**
@@ -49,6 +50,7 @@ export class SqliteStore implements Store {
       CREATE INDEX IF NOT EXISTS events_ws_seq ON events (workspace, seq);
       CREATE INDEX IF NOT EXISTS events_run ON events (workspace, run_id, seq);
       CREATE INDEX IF NOT EXISTS events_received ON events (received_at);
+      CREATE INDEX IF NOT EXISTS events_type_ts ON events (workspace, type, ts);
 
       CREATE TABLE IF NOT EXISTS agents (
         workspace      TEXT NOT NULL,
@@ -169,6 +171,21 @@ export class SqliteStore implements Store {
         `UPDATE approvals SET status = @status, comment = @comment, resolved_by = @resolved_by, resolved_at = @ts, updated_at = @now
          WHERE workspace = @workspace AND approval_id = @approval_id AND status = 'pending'`,
       ),
+      // Dashboard rows (stats). Missing bounds are '' and '~', which sort before and after any timestamp.
+      statsLlm: db.prepare(
+        `SELECT run_id, agent_id, ts, json_extract(body, '$.model') AS model,
+           json_extract(body, '$.tokens_in') AS tokens_in, json_extract(body, '$.tokens_out') AS tokens_out,
+           json_extract(body, '$.cost_usd') AS cost_usd, json_extract(body, '$.cost_source') AS cost_source,
+           json_extract(body, '$.data.duration_ms') AS duration_ms
+         FROM events WHERE workspace = @ws AND type = 'llm.call' AND ts >= @since AND ts < @until`,
+      ),
+      statsTools: db.prepare(
+        `SELECT json_extract(body, '$.data.tool_name') AS tool_name, json_extract(body, '$.data.ok') AS ok,
+           json_extract(body, '$.data.duration_ms') AS duration_ms
+         FROM events WHERE workspace = @ws AND type = 'tool.result' AND ts >= @since AND ts < @until`,
+      ),
+      statsErrors: db.prepare(`SELECT run_id, agent_id FROM events WHERE workspace = @ws AND type = 'error' AND ts >= @since AND ts < @until`),
+      statsRuns: db.prepare(`SELECT * FROM runs WHERE workspace = @ws AND started_at >= @since AND started_at < @until`),
       agents: db.prepare(`SELECT * FROM agents WHERE workspace = ? ORDER BY team_id, agent_id`),
       agent: db.prepare(`SELECT * FROM agents WHERE workspace = ? AND agent_id = ?`),
       runs: db.prepare(`SELECT * FROM runs WHERE workspace = ? ORDER BY updated_at DESC LIMIT ?`),
@@ -324,6 +341,18 @@ export class SqliteStore implements Store {
   }
   async runs(workspace: string, limit = 50) {
     return (this.s.runs.all(workspace, limit) as RunRow[]).map(rowToRun);
+  }
+  async stats(workspace: string, window: StatsWindow) {
+    const p = { ws: workspace, since: window.since ?? "", until: window.until ?? "~" };
+    const s = this.s;
+    const tools = s.statsTools.all(p) as { tool_name: string; ok: number; duration_ms: number | null }[];
+    return computeStats(workspace, window, {
+      llm: s.statsLlm.all(p) as LlmRow[],
+      tools: tools.map((t) => ({ ...t, ok: t.ok === 1 })),
+      errors: s.statsErrors.all(p) as ErrorRow[],
+      runs: (s.statsRuns.all(p) as RunRow[]).map(rowToRun),
+      agents: (s.agents.all(workspace) as AgentRow[]).map(rowToAgent),
+    });
   }
   async run(workspace: string, runId: string) {
     const row = this.s.run.get(workspace, runId) as RunRow | undefined;
