@@ -17,7 +17,11 @@ trap 'rm -f "$LOG"; docker compose start collector >/dev/null 2>&1 || true' EXIT
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 step "Starting collector + web (docker compose up)"
-docker compose up -d --build --force-recreate --wait
+if [ "${SKIP_BUILD:-}" = 1 ]; then
+  docker compose up -d --wait  # use existing images (e.g. no registry access)
+else
+  docker compose up -d --build --force-recreate --wait
+fi
 
 step "Checking the web app (office, /demo, bundled recording)"
 for path in / /demo; do
