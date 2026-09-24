@@ -78,7 +78,7 @@ export const S = {
     name: "chat",
     start: 4300,
     end: 8500,
-    attrs: { "gen_ai.operation.name": "chat", "gen_ai.system": "anthropic", "gen_ai.request.model": "claude-sonnet-5", "gen_ai.usage.prompt_tokens": 3000, "gen_ai.usage.completion_tokens": 400 },
+    attrs: { "gen_ai.operation.name": "chat", "gen_ai.system": "anthropic", "gen_ai.request.model": "claude-sonnet-5", "gen_ai.usage.prompt_tokens": 3000, "gen_ai.usage.completion_tokens": 400, "gen_ai.usage.cache_read.input_tokens": 2000 },
     events: [{ name: "agentspace.status", at: 5000, attrs: { status: "waiting_human", detail: "needs sign-off" } }],
   }),
 };

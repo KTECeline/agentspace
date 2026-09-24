@@ -277,3 +277,16 @@ What broke and what changed:
 - `tokens_cache_read` / `tokens_cache_write`: the part of `tokens_in` read from or written to the provider's prompt cache (OTel `gen_ai.usage.cache_read.input_tokens` / `cache_creation.input_tokens`, which are also counted in input tokens). Adapters fill them from each framework's usage data.
 
 **Why:** estimating every call that has tokens but no cost would double count the Claude Agent SDK's billed sessions, and pricing cache reads at the full input rate overcharges them by up to 10×. A field on the event keeps estimated cost auditable in the log, in recordings and in replays, instead of hiding it in a projection.
+
+## D-038 · Collector price table (2026-09-24)
+**Decision:**
+- `server/src/pricing/prices.json` is the built-in table: USD per 1M tokens, standard tier, text. Every model has an `as_of` date (when the price was checked) and the official `source` page (Anthropic, OpenAI, Google). Prices are copied from those pages, never guessed.
+- A model has one or more price **periods** (`from` = first day). The event's own timestamp picks the period, so a scheduled change (Gemini Flash doubles on 2027-01-01) prices each call correctly without editing the table on the day.
+- **Long-context tiers** (`long_context.above_input_tokens`) are applied only where the page states the threshold (OpenAI gpt-5.5/5.4: 272K; Gemini Pro: 200K). OpenAI's gpt-6 and gpt-5.6 list long-context prices but no threshold, so they are priced at the short-context rate.
+- **Cache pricing:** cached tokens are part of `tokens_in`. Cache reads and writes use their own price; a missing cache price falls back to the input price. Anthropic cache writes use the 5-minute rate, because the usage data doesn't say which TTL was written. Gemini caching is billed as storage time, which we can't see, so only its cache reads are priced.
+- **Matching:** an exact id or alias first (so `gpt-4o-2024-05-13` keeps its own price), then a normalized id that drops provider prefixes (`anthropic/`, `models/`, Bedrock `us.anthropic.`), version and date suffixes, `@`/`:` tags, and treats `.` as `-`. There is no prefix or fuzzy matching: an unknown model stays unpriced instead of borrowing a wrong price.
+- **Overrides:** `AGENTSPACE_PRICES_FILE` points at a local JSON file of the same shape. Its models replace built-in ones by id. A bad file stops the collector at startup rather than pricing wrong. `GET /v1/pricing` serves the merged table without a token (it's server config, not workspace data).
+- Each estimated event also gets `attributes["agentspace.price_model"]` and `["agentspace.price_as_of"]`, so a stored estimate says which price produced it.
+- Not modelled: batch discounts, fast mode, data-residency multipliers, per-search tool fees, image/audio tokens. An estimate is a floor for those.
+
+**Why:** estimates must be auditable and must never overwrite what a framework reported (requirement 4). Pricing at ingest keeps the SQL projection, the web `Projector`, recordings and replays consistent, because they all just sum `cost_usd`.

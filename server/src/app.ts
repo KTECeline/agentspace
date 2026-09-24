@@ -8,6 +8,7 @@ import type {
   ApprovalState,
   ApprovalStatus,
   IngestResponse,
+  PriceTable,
   RunControl,
   ServerInfo,
   StoredEvent,
@@ -20,6 +21,7 @@ import { OtlpAssembler } from "./otlp/assembler.js";
 import { protobufToJson, spansFromJson } from "./otlp/decode.js";
 import { createStore, type Store } from "./store/index.js";
 import type { ControlAction, InsertResult } from "./store/types.js";
+import { loadPricer } from "./pricing/index.js";
 import { validateEvent } from "./validate.js";
 
 export const VERSION = "0.1.0";
@@ -37,6 +39,7 @@ export interface AppDeps {
 export async function buildApp({ config, store, logger = true }: AppDeps): Promise<FastifyInstance> {
   const db = store ?? (await createStore(config));
   const auth = new Auth(config);
+  const pricer = loadPricer(config.pricesFile);
   const hub = new Hub();
   const waiters = new EventEmitter();
   waiters.setMaxListeners(0);
@@ -70,7 +73,7 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
     const valid: AgentSpaceEvent[] = [];
     for (const ev of events) {
       const res = validateEvent(ev);
-      if (res.ok) valid.push(res.event);
+      if (res.ok) valid.push(pricer.apply(res.event));
       else app.log.warn({ id: ev.id, message: res.message }, "dropped invalid converted event");
     }
     const changes = await db.insert(valid);
@@ -139,6 +142,9 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
     public_readonly: auth.publicReadonly,
   }));
 
+  // Prices are server config, not workspace data: readable without a token.
+  app.get("/v1/pricing", (): PriceTable => pricer.table);
+
   // ---------------- ingest ----------------
 
   app.post("/v1/events", async (req, reply) => {
@@ -158,7 +164,7 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
       else if (!auth.canIngest(tok, res.event.workspace)) {
         unauthorized += 1;
         message = `not allowed to write to workspace "${res.event.workspace}"`;
-      } else valid.push(res.event);
+      } else valid.push(pricer.apply(res.event));
       if (message && errors.length < MAX_ERRORS_REPORTED) errors.push({ index, id: typeof id === "string" ? id : undefined, message });
     });
     if (unauthorized && unauthorized === body.events.length) return deny(reply, 401, "Writing events");

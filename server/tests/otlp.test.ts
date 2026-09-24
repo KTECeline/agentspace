@@ -36,6 +36,7 @@ describe("OtlpAssembler", () => {
       ["planner", 1200, 80, "gpt-5-2026-01-01"],
       ["writer", 3000, 400, "claude-sonnet-5"],
     ]);
+    expect(llm[1]!.tokens_cache_read).toBe(2000);
     const tool = all.find((e) => e.type === "tool.call")!;
     expect(tool.agent_id).toBe("writer");
     expect(tool.parent_id).toBe("a000000000000004");
@@ -94,6 +95,8 @@ describe("POST /v1/traces", () => {
       ["writer", "done", 3000],
     ]);
     expect(runs[0]).toMatchObject({ run_id: TRACE, name: "research", status: "ok", tokens_in: 4200 });
+    // Priced at ingest (D-038): gpt-5 1200 in + 80 out; claude-sonnet-5 1000 in + 2000 cache reads + 400 out.
+    expect(runs[0]!.cost_usd).toBeCloseTo((1200 * 1.25 + 80 * 10 + 1000 * 2 + 2000 * 0.2 + 400 * 10) / 1e6, 10);
   });
 
   it("accepts gzipped OTLP/protobuf with a workspace header, and is idempotent", async () => {

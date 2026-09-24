@@ -185,6 +185,8 @@ export class OtlpAssembler {
       const model = str(a["gen_ai.response.model"]) ?? str(a["gen_ai.request.model"]);
       const tin = num(a["gen_ai.usage.input_tokens"]) ?? num(a["gen_ai.usage.prompt_tokens"]);
       const tout = num(a["gen_ai.usage.output_tokens"]) ?? num(a["gen_ai.usage.completion_tokens"]);
+      const cacheRead = num(a["gen_ai.usage.cache_read.input_tokens"]);
+      const cacheWrite = num(a["gen_ai.usage.cache_creation.input_tokens"]);
       const finish = a["gen_ai.response.finish_reasons"];
       out.push(
         base(
@@ -200,7 +202,14 @@ export class OtlpAssembler {
             input: this.content(a["gen_ai.input.messages"]),
             output: this.content(a["gen_ai.output.messages"]),
           },
-          { tokens_in: tin, tokens_out: tout, model: model?.slice(0, 256), summary: `${model ?? "model"} replied` },
+          {
+            tokens_in: tin,
+            tokens_out: tout,
+            tokens_cache_read: cacheRead || undefined,
+            tokens_cache_write: cacheWrite || undefined,
+            model: model?.slice(0, 256),
+            summary: `${model ?? "model"} replied`,
+          },
         ),
       );
       if (span.status.code === 2) out.push(base("llm-err", "error", span.endMs, ctx, errorData(span)));

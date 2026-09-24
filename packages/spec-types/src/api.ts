@@ -67,6 +67,41 @@ export interface ApprovalState {
   resolved_at: string | null;
 }
 
+/** Prices in USD per 1M tokens. Cached tokens are part of the input tokens. */
+export interface PriceTier {
+  input: number;
+  output: number;
+  /** Reading from the prompt cache. Missing: priced as input. */
+  cache_read?: number;
+  /** Writing to the prompt cache (Anthropic: the 5-minute rate). Missing: priced as input. */
+  cache_write?: number;
+}
+
+export interface PricePeriod extends PriceTier {
+  /** First day (YYYY-MM-DD) these prices apply; omitted on the first period. */
+  from?: string;
+  /** Higher prices for prompts over `above_input_tokens` input tokens. */
+  long_context?: PriceTier & { above_input_tokens: number };
+}
+
+export interface ModelPrice {
+  id: string;
+  provider?: string;
+  aliases?: string[];
+  /** When the prices were last checked against `source`. */
+  as_of: string;
+  /** The official pricing page. */
+  source: string;
+  note?: string;
+  prices: PricePeriod[];
+}
+
+/** GET /v1/pricing: the collector's price table (built in, plus AGENTSPACE_PRICES_FILE). */
+export interface PriceTable {
+  version: string;
+  models: ModelPrice[];
+}
+
 /** GET /v1/info: what the browser needs to know before connecting. */
 export interface ServerInfo {
   version: string;
