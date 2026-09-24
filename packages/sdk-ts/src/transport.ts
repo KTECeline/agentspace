@@ -111,6 +111,9 @@ export class Transport {
 
   private drain(): Promise<void> {
     if (this.sending) return this.sending;
+    // Nothing to send: return now. (Otherwise the async body below would finish synchronously,
+    // clearing `sending` before it's assigned, and leave a stale promise that blocks all sends.)
+    if (this.queue.length === 0) return Promise.resolve();
     this.sending = (async () => {
       try {
         while (this.queue.length > 0) {

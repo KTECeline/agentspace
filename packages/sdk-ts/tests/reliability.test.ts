@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as agentspace from "../src/index.js";
-import { Ring } from "../src/transport.js";
+import { Ring, Transport } from "../src/transport.js";
 import { FakeCollector, freePort, sleep } from "./helpers.js";
 
 afterEach(async () => {
@@ -103,6 +103,22 @@ describe("reliability", () => {
       expect(agentspace.stats().rejected).toBeGreaterThanOrEqual(11);
       expect(agentspace.stats().pending).toBe(0);
     } finally {
+      await c.stop();
+    }
+  });
+});
+
+describe("Transport", () => {
+  it("keeps sending after a drain found the queue empty", async () => {
+    const c = await new FakeCollector().start();
+    const t = new Transport({ endpoint: `${c.url}/v1/events`, maxQueue: 100, maxBatch: 10, flushIntervalMs: 5, timeoutMs: 1000 });
+    try {
+      await (t as unknown as { drain(): Promise<void> }).drain(); // e.g. a timer firing after a flush
+      t.put({ id: "a" });
+      expect(await t.flush(1000)).toBe(true);
+      expect(c.events).toHaveLength(1);
+    } finally {
+      await t.shutdown(200);
       await c.stop();
     }
   });
