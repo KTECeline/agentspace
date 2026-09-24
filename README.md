@@ -4,7 +4,13 @@
 
 ![AgentSpace: a LangGraph dev team (Manager, Triage, Engineer) at their desks in a cozy isometric office, with a live event log](docs/assets/office-3d.jpg)
 
-> 🚧 **Early development: Phase 2 of 5.** Working today: the event spec, the Python SDK with the LangGraph adapter, the collector, and the live 3D office (plus a 2D view). Next: more adapters, OTLP ingest, and a TypeScript SDK. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 **Early development: Phase 3 of 5.** Working today:
+> - the live 3D office (plus a 2D view);
+> - Python and TypeScript SDKs;
+> - adapters for LangGraph, CrewAI, the OpenAI Agents SDK, the Claude Agent SDK and Claude Code;
+> - OpenTelemetry (OTLP) ingest.
+>
+> Next: approvals from the office, replay, and cost. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quickstart
 
@@ -18,12 +24,21 @@ pip install agentspace-sdk
 
 ```python
 import agentspace
-agentspace.init()                    # LangGraph graphs are picked up automatically
+agentspace.init()                    # LangGraph, CrewAI and OpenAI Agents SDK apps are picked up automatically
 ```
+
+| Your stack | How to connect it |
+|---|---|
+| **LangGraph / LangChain**, **CrewAI**, **OpenAI Agents SDK** | `agentspace.init()`. Each uses the framework's official callback, event or tracing hook |
+| **Claude Agent SDK** | `options = instrument_options(options)` and `async for m in track(query(...))` (see [example](examples/claude-agent-sdk-support)) |
+| **Claude Code** (your own coding sessions) | `python -m agentspace.claude_code install` |
+| **Anything with OpenTelemetry** (Vercel AI SDK, OpenLLMetry, OpenInference, …) | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4800/v1/traces`, no SDK needed |
+| **TypeScript / JavaScript** | `npm i agentspace-sdk`, then `agentspace.agent({ name }, fn)` ([docs](packages/sdk-ts)) |
+| **Anything else** | the manual API: `@agentspace.agent`, `agentspace.step()`, `agentspace.emit()` |
 
 Want to see it without writing any code?
 
-- **Recorded demo:** open http://localhost:4801/demo. It replays a real run and needs no collector and no API key.
+- **Recorded demo:** open http://localhost:4801/demo. It replays recorded runs of every example (pick one from the *Scenario* menu) and needs no collector and no API key.
 - **Live example team** (no API key): `cd examples/langgraph-dev-team && uv run python main.py --fake --runs 0`
 
 ## What you get
@@ -33,7 +48,8 @@ Want to see it without writing any code?
 - **Handoffs, tool calls and model calls** in a filterable event log, with token counts and model names.
 - **A 2D view** for low-power machines or screen readers. Toggle it in the header; it's used automatically when WebGL isn't available.
 - **Run totals**: duration, tokens, cost, and event count.
-- **Zero config for LangGraph.** Each graph node becomes an agent. This uses LangChain's official callback hook; nothing is monkey-patched.
+- **Works with your framework.** LangGraph, CrewAI and the OpenAI Agents SDK are instrumented automatically, and the Claude Agent SDK with two helper calls. All of them use each framework's *official* extension point, so nothing is monkey-patched. There's also plain OpenTelemetry over OTLP, and a TypeScript SDK.
+- **Watch your own Claude Code sessions.** Every project gets a room, and subagents get their own desks. Permission prompts glow "needs you".
 - **Manual API for everything else**: `@agentspace.agent`, `agentspace.step()`, `agentspace.emit()`.
 - **Private by default.** Only metadata and short summaries leave your process. Prompts and outputs are opt-in (`capture_content=True`) and pass through your redaction hook.
 - **It can't break your app.** Events are queued in memory and sent by a background thread. If the collector is down, your app keeps running: memory stays bounded and you get one warning. SDK errors are never raised into your code. This is tested, including "kill the collector mid-run" in `make demo-check`.
@@ -50,11 +66,25 @@ Want to see it without writing any code?
 ```
 
 - **[Event spec](spec/README.md)** (JSON Schema, v0.1) is the single source of truth. The Python (pydantic) and TypeScript types are generated from it, and it maps to the [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/semantic-conventions-genai).
-- **[Python SDK](packages/sdk-python)** (`pip install agentspace-sdk`, `import agentspace`) has zero runtime dependencies and supports Python 3.10+.
+- **[Python SDK](packages/sdk-python)** (`pip install agentspace-sdk`, `import agentspace`) has zero runtime dependencies and supports Python 3.10+. Its adapters live in `agentspace/adapters/`.
+- **[TypeScript SDK](packages/sdk-ts)** (`npm i agentspace-sdk`) has the same API and the same guarantees, with zero runtime dependencies.
+- **Collector OTLP ingest** (`POST /v1/traces`, JSON or protobuf) maps OpenTelemetry GenAI spans to agents ([details](spec/README.md#otlp-ingest-post-v1traces)).
 - **[Collector](server)** validates every event against the schema, de-duplicates retries, stores events in SQLite, and streams them to browsers.
 - **[Web](web)**: Next.js, Tailwind, and react-three-fiber. Furniture is instanced and labels are one DOM layer, so **50 agents at 100 events/s run at about 60 fps** (production build, MacBook Air; try `/demo?stress=50`).
 
 ![50 agents in 8 teams under synthetic load, 60 fps](docs/assets/office-stress-50.jpg)
+
+## Examples
+
+Every example runs without an API key (`--fake`, or `--replay`) and has a real mode.
+
+| Example | Framework | What you'll see |
+|---|---|---|
+| [langgraph-dev-team](examples/langgraph-dev-team) | LangGraph | Manager → Triage → Engineer fix a seeded bug |
+| [crewai-research-desk](examples/crewai-research-desk) | CrewAI | Researcher → Fact Checker → Writer, with a search tool |
+| [openai-agents-handoffs](examples/openai-agents-handoffs) | OpenAI Agents SDK | Triage hands off to Billing, which looks up an invoice |
+| [claude-agent-sdk-support](examples/claude-agent-sdk-support) | Claude Agent SDK | a subagent, and a refund waiting for your approval |
+| [otel-generic](examples/otel-generic) | plain OpenTelemetry | an agent team with no AgentSpace SDK at all |
 
 ## Python API
 
@@ -94,6 +124,7 @@ make lint typecheck # ruff, mypy, eslint, tsc
 make gen-types      # regenerate TS + Python types after editing spec/
 make demo-check     # compose up, check /demo, run example live, kill collector mid-run, expect exit 0
 make record         # save the latest finished run as the /demo recording
+cd packages/sdk-python && uv sync --group crewai   # one framework group at a time for adapter work
 ```
 
 Repo layout: `spec/` (event schema) · `packages/sdk-python` · `packages/spec-types` (generated TS types) · `server/` (collector) · `web/` (office) · `examples/` · `docs/` (brief, progress, decisions).
@@ -102,7 +133,7 @@ Repo layout: `spec/` (event schema) · `packages/sdk-python` · `packages/spec-t
 
 1. ✅ Spec, Python SDK, LangGraph adapter, collector, 2D view
 2. ✅ 3D office (react-three-fiber): auto-layout, avatars, handoff animations, agent panel, recorded demo
-3. Adapters for the Claude Agent SDK, CrewAI, the OpenAI Agents SDK and Claude Code hooks; OTLP ingest; TypeScript SDK
+3. ✅ Adapters for the Claude Agent SDK, CrewAI, the OpenAI Agents SDK and Claude Code hooks; OTLP ingest; TypeScript SDK
 4. Human approvals from the office, pause/cancel, replay timeline, cost dashboard, Postgres, auth
 5. Published overhead benchmarks, releases to PyPI and npm, docs site, public demo
 

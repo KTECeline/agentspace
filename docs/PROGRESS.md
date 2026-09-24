@@ -53,5 +53,41 @@
 - In live mode, a fresh page load orders desks by the collector's snapshot order (team, then id), not by when each agent actually first appeared. After that, desks are stable.
 - Cost is still $0 (Phase 4).
 
-## Phase 3: More adapters + OTLP + TS SDK (next)
-Adapters for the Claude Agent SDK, CrewAI, the OpenAI Agents SDK and Claude Code hooks; OTLP ingest; TypeScript SDK; the remaining examples; per-adapter conformance tests.
+## Phase 3: More adapters + OTLP + TS SDK ✅ (2026-09-24)
+
+**Done-check:** `make demo-check` passes. It adds a step where an OpenTelemetry-only agent appears via OTLP. CI (12 jobs) is green: Python 3.10/3.13, one job per adapter, TypeScript, generated types, and every example running offline with no collector.
+
+- [x] **OTLP ingest** `POST /v1/traces`:
+  - JSON or protobuf (embedded protos), gzip;
+  - GenAI spans become agents, LLM calls, tools, runs and handoffs;
+  - child spans are held until their parent arrives;
+  - idempotent, and content is dropped by default.
+  - Tested against payloads recorded from the real OTel Python exporter.
+- [x] **TypeScript SDK** `agentspace-sdk`:
+  - same API as Python, using AsyncLocalStorage, a ring buffer and fetch;
+  - never throws or blocks;
+  - self-contained ESM + CJS with inlined types, verified with `npm pack`.
+- [x] **OpenAI Agents SDK adapter** (TracingProcessor), with a golden conformance test using a scripted `Model`.
+- [x] **CrewAI adapter** (event bus listener):
+  - correct under CrewAI's thread-pool (out-of-order) delivery;
+  - shuffled-replay test; golden test.
+- [x] **Claude Agent SDK adapter**:
+  - `instrument_options()` + `track()`: tools, subagents, permission waits, per-message usage, billed session cost;
+  - `replay()` for recordings.
+- [x] **Claude Code hooks**: `python -m agentspace.claude_code install` (stateless, silent, fail-open; metadata-only).
+- [x] **Examples:** `crewai-research-desk`, `openai-agents-handoffs`, `claude-agent-sdk-support`, `otel-generic` (each with a README, `.env.example`, one command, and an offline mode).
+- [x] **`/demo` scenario picker** with recordings of every example; the recorder sorts events by time.
+- [x] **Per-framework uv dependency groups** (declared conflicting) and one CI job per adapter. The framework extras were removed, because CrewAI and the OpenAI Agents SDK need incompatible `openai` versions (D-026).
+
+**Test counts:** Python 43 core, plus 5–9 per adapter group · TS SDK 14 · collector 18 · web 33.
+
+### Deferred or known gaps
+- **The Claude Agent SDK fixture and replay are synthetic.** They're built from the SDK's typed schemas, not captured from a live CLI. The real mode of that example hasn't been run end-to-end yet (no API key).
+- **The Claude Code hooks haven't been tried in a live Claude Code session yet.** Unit and subprocess tests cover them. To try: `python -m agentspace.claude_code install`.
+- **The Docker web image wasn't rebuilt at the end of this phase.** The network started intercepting TLS to registry.npmjs.org (a Fortinet certificate), so `pnpm install` inside Docker fails. The done-check passed with `SKIP_BUILD=1` on the existing images; CI isn't affected. Rebuild when you're on a network without TLS inspection, or add the Fortinet CA to the build.
+- CrewAI crews always get their own run (their handlers run on CrewAI's threads, so an enclosing `agentspace.run()` isn't visible to them).
+- The OTLP endpoint is on the collector's port 4800; the standard port 4318 isn't exposed yet.
+- Cost is still mostly $0. Only the Claude Agent SDK reports billed cost; price tables come in Phase 4.
+
+## Phase 4: Two-way control + replay + cost (next)
+`request_approval` end to end (approve or reject from the office), pause/cancel, the replay timeline, the cost dashboard with model price tables, the Postgres option, and auth.
