@@ -20,6 +20,12 @@ Mapping:
 - LLM call started / completed / failed    -> status + llm.call (tokens, model, duration)
 - tool usage started / finished / error    -> status + tool.call / tool.result
 
+Controls: CrewAI's event handlers run on a thread pool, so they can't stop a crew. Pass
+``step_callback=agentspace.adapters.crewai.step_checkpoint`` to your ``Crew`` (or chain it
+from your own callback) and every agent step becomes a safe point: it blocks while the run is
+paused and raises ``agentspace.Cancelled`` once it's cancelled (the run finishes as
+"cancelled").
+
 The team (office room) is the crew's name. CrewAI crews always get their own run: handlers run
 on CrewAI's threads, so an enclosing ``agentspace.run()`` isn't visible to them.
 """
@@ -36,6 +42,7 @@ from crewai.events import BaseEventListener
 
 from agentspace import _api
 from agentspace._client import AgentInfo
+from agentspace._control import Cancelled, adapter_checkpoint
 from agentspace._log import internal_error
 from agentspace._util import new_id, slugify, truncate
 
@@ -240,6 +247,29 @@ class AgentSpaceCrewListener(BaseEventListener):
             parent_id=None,
             ts=_iso(_ts(ev)),
         )
+
+    def _finish_cancelled(self, run: _Run) -> None:
+        """The crew was cancelled from a step callback: CrewAI emits no "completed" or
+        "failed" event for a BaseException, so close the run here."""
+        client = self._client()
+        with self._lock:
+            if client is None or run.finished:
+                return
+            run.finished = True
+            now = datetime.now(timezone.utc)
+            run.finished_at = now
+            for agent_id in sorted(run.agents):
+                self._set_status(run, agent_id, now, "done", "cancelled by an operator")
+            duration = max(0.0, (now - run.started).total_seconds() * 1000)
+            client.emit(
+                "run.finished",
+                {"status": "cancelled", "duration_ms": round(duration, 1)},
+                run_id=run.run_id,
+                agent_id=None,
+                team_id=None,
+                parent_id=None,
+                ts=_iso(now),
+            )
 
     def _crew_completed(self, source: Any, ev: Any) -> None:
         self._finish_run(ev, True, None)
@@ -569,6 +599,31 @@ def _int(v: Any) -> int | None:
 
 
 _listener: AgentSpaceCrewListener | None = None
+
+
+def step_checkpoint(step_output: Any = None) -> None:
+    """A ``step_callback`` that makes each agent step a pause/cancel safe point.
+
+    ``Crew(..., step_callback=step_checkpoint)``. Blocks while the run is paused; raises
+    :class:`agentspace.Cancelled` once it's cancelled (in ``cancel_mode="flag"`` it returns and
+    you poll ``agentspace.is_cancelled(run_id)``).
+    """
+    listener = _listener
+    run = listener._run() if listener else None
+    if listener is None or run is None or run.finished:
+        return
+    agent_id = run.last_agent
+    try:
+        adapter_checkpoint(run.run_id, agent_id, run.team_id if agent_id else None)
+    except Cancelled:
+        listener._finish_cancelled(run)
+        raise
+
+
+def current_run_id() -> str | None:
+    """The AgentSpace run id of the crew running now (for ``is_cancelled`` in flag mode)."""
+    run = _listener._run() if _listener else None
+    return run.run_id if run and not run.finished else None
 
 
 def instrument(client: Client | None = None) -> bool:

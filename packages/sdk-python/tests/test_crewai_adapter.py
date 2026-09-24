@@ -16,6 +16,7 @@ from crewai.events import crewai_event_bus
 from jsonschema import Draft202012Validator
 
 import agentspace
+from agentspace.adapters.crewai import step_checkpoint
 
 GOLDEN = Path(__file__).parent / "fixtures" / "crewai_research_desk.golden.json"
 
@@ -198,3 +199,51 @@ def test_survives_out_of_order_delivery(
                 last[e["agent_id"]] = (e["ts"], e["data"]["status"])
     assert {k: v[1] for k, v in last.items()} == {"researcher": "done", "writer": "done"}
     assert [e["type"] for e in ev].count("run.finished") == 1
+
+
+# ---------------- pause / cancel ----------------
+
+
+def _flush_then_checkpoint(step: Any) -> None:
+    crewai_event_bus.flush()
+    assert agentspace.flush()  # the ingest response carries the control
+    step_checkpoint(step)
+
+
+def test_step_checkpoint_cancels_crew(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    init_fast(collector.url)
+    collector.auto_control = lambda e: "cancelled" if e["type"] == "run.started" else None
+    with pytest.raises(agentspace.Cancelled):
+        build_research_desk(step_callback=_flush_then_checkpoint).kickoff()
+    crewai_event_bus.flush()
+    agentspace.flush()
+    ev = collector.events
+    assert_valid_events(validator, ev)
+    assert [e["data"]["status"] for e in ev if e["type"] == "run.finished"] == ["cancelled"]
+    assert not [e for e in ev if e["agent_id"] == "writer"]  # the second task never started
+    researcher = [e["data"] for e in ev if e["type"] == "agent.status"][-1]
+    assert researcher["status"] == "done" and "cancelled" in (researcher["detail"] or "")
+
+
+def test_step_checkpoint_pauses_crew(collector: FakeCollector) -> None:
+    import threading
+
+    init_fast(collector.url)
+    collector.auto_control = lambda e: "paused" if e["type"] == "run.started" else None
+
+    def pause_once(step: Any) -> None:
+        crewai_event_bus.flush()
+        assert agentspace.flush()
+        if collector.auto_control:
+            collector.auto_control = None
+            run_id = collector.events[0]["run_id"]
+            threading.Timer(0.3, lambda: collector.controls.pop(run_id)).start()
+        step_checkpoint(step)
+
+    kickoff(build_research_desk(step_callback=pause_once))
+    ev = collector.events
+    blocked = [e for e in ev if e["type"] == "agent.status" and e["data"]["status"] == "blocked"]
+    assert blocked and blocked[0]["agent_id"] == "researcher"
+    assert [e["data"]["status"] for e in ev if e["type"] == "run.finished"] == ["ok"]

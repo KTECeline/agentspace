@@ -87,7 +87,9 @@ def research_replies() -> list[tuple[str, int, int]]:
     ]
 
 
-def build_research_desk(replies: list[tuple[str, int, int]] | None = None) -> Crew:
+def build_research_desk(
+    replies: list[tuple[str, int, int]] | None = None, step_callback: Any = None
+) -> Crew:
     llm = ScriptedLLM(model="scripted-fake", replies=replies or research_replies())
     researcher = Agent(
         role="Researcher",
@@ -118,4 +120,5 @@ def build_research_desk(replies: list[tuple[str, int, int]] | None = None) -> Cr
         tasks=[research, report],
         process=Process.sequential,
         verbose=False,
+        step_callback=step_callback,
     )
