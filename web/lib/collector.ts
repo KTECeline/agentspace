@@ -1,4 +1,4 @@
-import type { ApprovalState, PriceTable, RunState, ServerInfo, StatsResponse } from "@agentspace/spec-types";
+import type { ApprovalState, PriceTable, RunState, ServerInfo, StatsResponse, StoredEvent } from "@agentspace/spec-types";
 
 /**
  * The collector's REST API for operator actions (approve, pause, cancel), plus the operator
@@ -62,6 +62,23 @@ const ws = (workspace: string) => encodeURIComponent(workspace);
 export function fetchStats(base: string, workspace: string, since: string | null, token: string | null): Promise<StatsResponse> {
   const q = since ? `?since=${encodeURIComponent(since)}` : "";
   return call(base, `/v1/workspaces/${ws(workspace)}/stats${q}`, token);
+}
+
+const PAGE = 5000;
+/** Enough for any run worth replaying; longer ones are cut (and say so). */
+export const MAX_REPLAY_EVENTS = 50_000;
+
+/** Every stored event of a run, oldest first (paged by `after`). */
+export async function fetchRunEvents(base: string, workspace: string, runId: string, token: string | null): Promise<{ events: StoredEvent[]; truncated: boolean }> {
+  const events: StoredEvent[] = [];
+  let after = 0;
+  for (;;) {
+    const page = await call<StoredEvent[]>(base, `/v1/workspaces/${ws(workspace)}/runs/${encodeURIComponent(runId)}/events?after=${after}&limit=${PAGE}`, token);
+    events.push(...page);
+    if (page.length < PAGE) return { events, truncated: false };
+    if (events.length >= MAX_REPLAY_EVENTS) return { events: events.slice(0, MAX_REPLAY_EVENTS), truncated: true };
+    after = page[page.length - 1]!.seq;
+  }
 }
 
 export function fetchPricing(base: string): Promise<PriceTable> {

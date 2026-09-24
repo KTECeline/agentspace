@@ -3,9 +3,10 @@
 import { create } from "zustand";
 import type { ServerInfo, WsServerMessage } from "@agentspace/spec-types";
 import { loadToken, saveToken } from "./collector";
+import type { ReplayPlayer } from "./sources/replay";
 import { emptyState, reduce, type OfficeState } from "./state";
 
-export type Connection = "connecting" | "live" | "reconnecting" | "offline" | "recording" | "unauthorized";
+export type Connection = "connecting" | "live" | "reconnecting" | "offline" | "recording" | "replay" | "unauthorized";
 
 /** The live collector this page talks to (null for recordings and the stress test). */
 export interface CollectorTarget {
@@ -24,6 +25,8 @@ interface OfficeStore extends OfficeState {
   /** Operator token (kept in localStorage). */
   token: string | null;
   tokenDialogOpen: boolean;
+  /** The player behind a recording or replay (drives the scrubber); null otherwise. */
+  player: ReplayPlayer | null;
   apply: (msgs: WsServerMessage[]) => void;
   reset: () => void;
   setConnection: (c: Connection) => void;
@@ -33,6 +36,7 @@ interface OfficeStore extends OfficeState {
   setCollector: (c: CollectorTarget | null, info?: ServerInfo | null) => void;
   setToken: (token: string | null) => void;
   openTokenDialog: (open: boolean) => void;
+  setPlayer: (player: ReplayPlayer | null) => void;
 }
 
 export const useOffice = create<OfficeStore>()((set) => ({
@@ -45,6 +49,7 @@ export const useOffice = create<OfficeStore>()((set) => ({
   info: null,
   token: null,
   tokenDialogOpen: false,
+  player: null,
   apply: (msgs) =>
     set((s) => {
       let next: OfficeState = s;
@@ -62,6 +67,7 @@ export const useOffice = create<OfficeStore>()((set) => ({
     set({ token });
   },
   openTokenDialog: (tokenDialogOpen) => set({ tokenDialogOpen }),
+  setPlayer: (player) => set({ player }),
 }));
 
 /** Operator actions are possible: a live collector that isn't in public read-only mode. */

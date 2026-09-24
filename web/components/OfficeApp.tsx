@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { Box, ChartColumn, Eye, KeyRound, LayoutGrid, RefreshCw } from "lucide-react";
+import { Box, ChartColumn, Eye, History, KeyRound, LayoutGrid, Radio, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
 import { formatDuration, formatTokens } from "@/lib/format";
 import { latestRun } from "@/lib/state";
@@ -15,6 +15,7 @@ import { Grid2D } from "./office2d/Grid2D";
 import { ApprovalsPanel, usePendingCount } from "./operator/Approvals";
 import { RunControls } from "./operator/RunControls";
 import { TokenButton } from "./operator/TokenDialog";
+import { ReplayBar } from "./replay/ReplayBar";
 import { ScenarioPicker } from "./ScenarioPicker";
 import { AgentPanel } from "./panels/AgentPanel";
 import { EventLog } from "./panels/EventLog";
@@ -51,8 +52,10 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
   const selectedAgent = useOffice((s) => s.selectedAgent);
   const select = useOffice((s) => s.select);
 
-  const workspace = source.kind === "live" ? source.workspace : source.kind === "stress" ? "stress" : "demo";
+  const workspace = source.kind === "live" || source.kind === "replay" ? source.workspace : source.kind === "stress" ? "stress" : "demo";
   const collectorUrl = source.kind === "live" ? source.collectorUrl : null;
+  const player = useOffice((s) => s.player);
+  const officeQuery = source.kind === "live" || source.kind === "replay" ? new URLSearchParams({ collector: source.collectorUrl, workspace }).toString() : "";
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-4 p-4 lg:h-dvh lg:flex-none lg:p-6">
@@ -81,11 +84,20 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
           </button>
         )}
         {scenario && <ScenarioPicker current={scenario} />}
-        {run && <RunSummary run={run} />}
-        <ViewToggle mode={view.mode} onChange={view.setMode} webgl={view.webgl} />
-        {collectorUrl && (
+        {source.kind === "replay" && (
           <a
-            href={`/dashboard?${new URLSearchParams({ collector: collectorUrl, workspace })}`}
+            href={`/?${officeQuery}`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Radio aria-hidden className="size-4" />
+            Back to live
+          </a>
+        )}
+        {run && <RunSummary run={run} replayHref={collectorUrl ? `/replay?${officeQuery}&run=${encodeURIComponent(run.run_id)}` : undefined} />}
+        <ViewToggle mode={view.mode} onChange={view.setMode} webgl={view.webgl} />
+        {(source.kind === "live" || source.kind === "replay") && (
+          <a
+            href={`/dashboard?${officeQuery}`}
             className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChartColumn aria-hidden className="size-4" />
@@ -94,6 +106,8 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
         )}
         {collectorUrl && !publicMode && <TokenButton onSaved={retry} />}
       </header>
+
+      {player && !error && <ReplayBar player={player} showClock={source.kind === "replay"} />}
 
       {error ? (
         <Problem title="Something went wrong" onRetry={() => location.reload()}>
@@ -190,13 +204,14 @@ function ViewToggle({ mode, onChange, webgl }: { mode: ViewMode; onChange: (m: V
 }
 
 function ConnectionPill({ connection, onRetry }: { connection: Connection; onRetry: () => void }) {
-  const tone = { live: "done", connecting: "waiting", reconnecting: "using_tool", offline: "error", recording: "thinking", unauthorized: "waiting_human" }[connection];
+  const tone = { live: "done", connecting: "waiting", reconnecting: "using_tool", offline: "error", recording: "thinking", replay: "thinking", unauthorized: "waiting_human" }[connection];
   const label = {
     live: "Live",
     connecting: "Connecting…",
     reconnecting: "Reconnecting…",
     offline: "Collector offline",
     recording: "Recorded demo",
+    replay: "Replay",
     unauthorized: "Needs a token",
   }[connection];
   return (
@@ -258,7 +273,7 @@ function RightTabs({ tab, onChange, pending }: { tab: "activity" | "approvals"; 
   );
 }
 
-function RunSummary({ run }: { run: RunState }) {
+function RunSummary({ run, replayHref }: { run: RunState; replayHref?: string }) {
   const paused = run.status === "running" && run.control === "paused";
   const status = paused ? "blocked" : run.status === "running" ? "thinking" : run.status === "ok" ? "done" : run.status === "cancelled" ? "waiting" : "error";
   const label = paused ? "paused" : run.status;
@@ -279,6 +294,15 @@ function RunSummary({ run }: { run: RunState }) {
       <Stat label="Events" value={String(run.event_count)} />
     </dl>
     <RunControls run={run} />
+    {replayHref && (
+      <a
+        href={replayHref}
+        className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <History aria-hidden className="size-4" />
+        Replay
+      </a>
+    )}
     </div>
   );
 }

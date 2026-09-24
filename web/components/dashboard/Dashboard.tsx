@@ -116,13 +116,13 @@ export function Dashboard({ collectorUrl, workspace, officeHref }: { collectorUr
           </p>
         </section>
       ) : (
-        <Body stats={load.stats} pricing={pricing} />
+        <Body stats={load.stats} pricing={pricing} replayHref={(runId) => `/replay?${new URLSearchParams({ collector: collectorUrl, workspace, run: runId })}`} />
       )}
     </div>
   );
 }
 
-function Body({ stats, pricing }: { stats: StatsResponse; pricing: PriceTable | null }) {
+function Body({ stats, pricing, replayHref }: { stats: StatsResponse; pricing: PriceTable | null; replayHref: (runId: string) => string }) {
   const t = stats.totals;
   const { note } = costInfo(t);
   return (
@@ -185,7 +185,7 @@ function Body({ stats, pricing }: { stats: StatsResponse; pricing: PriceTable | 
       </div>
 
       <Card title="Runs" subtitle={stats.by_run.length >= 200 ? "The 200 most recent runs." : undefined}>
-        <RunsTable runs={stats.by_run} />
+        <RunsTable runs={stats.by_run} replayHref={replayHref} />
       </Card>
 
       <Card title="Slowest tools" subtitle="By 95th percentile duration.">

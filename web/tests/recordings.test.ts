@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WsServerMessage } from "@agentspace/spec-types";
 import { RECORDINGS, recordingById } from "../lib/recordings";
-import { recordedSource, type Recording } from "../lib/sources/recorded";
+import { buildTimeline } from "../lib/replay";
+import type { Recording } from "../lib/sources/recorded";
+import { ReplayPlayer } from "../lib/sources/replay";
 import { emptyState, reduce, type OfficeState } from "../lib/state";
 
 beforeEach(() => vi.useFakeTimers());
@@ -15,7 +17,7 @@ describe("bundled recordings", () => {
     expect(rec.format).toBe("agentspace-recording");
     expect(rec.events.length).toBeGreaterThan(10);
     let state: OfficeState = emptyState;
-    const stop = recordedSource(rec, "demo", { loop: false })({
+    const stop = new ReplayPlayer(buildTimeline(rec.events), "demo", { speed: 16 }).source({
       send: (m: WsServerMessage) => void (state = reduce(state, m)),
       setConnection: () => {},
     });
