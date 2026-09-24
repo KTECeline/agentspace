@@ -15,7 +15,12 @@ COPY packages/spec-types packages/spec-types
 COPY server server
 RUN [ -s /tmp/extra-ca.pem ] && export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; pnpm --filter @agentspace/server build \
  && pnpm --filter @agentspace/server deploy --legacy --prod /out \
- && cp -r server/dist /out/dist
+ && cp -r server/dist /out/dist \
+ # better-sqlite3 ships its C sources and prebuilds for 8 platforms; keep only this one's (musl).
+ && for d in /out/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3; do \
+      rm -rf "$d/deps" "$d/src" "$d/binding.gyp"; \
+      find "$d/prebuilds" -type f ! -name "linuxmusl-$(node -p process.arch).node" -delete; \
+    done
 
 FROM node:22-alpine
 ENV NODE_ENV=production PORT=4800 HOST=0.0.0.0 AGENTSPACE_DB=/data/agentspace.db
