@@ -157,10 +157,12 @@ jobs:
           done
       - name: Smoke test
         run: |
-          docker run -d --name c -p 4800:4800 agentspace-collector:ci
-          docker run -d --name w -p 4801:4801 agentspace-web:ci
-          for i in $(seq 1 30); do curl -fs localhost:4800/healthz && curl -fs -o /dev/null localhost:4801/demo && break; sleep 1; done
+          docker run -d --name as-collector -p 4800:4800 agentspace-collector:ci
+          docker run -d --name as-web -p 4801:4801 agentspace-web:ci
+          for _ in $(seq 1 30); do curl -fs localhost:4800/healthz && curl -fs -o /dev/null localhost:4801/demo && break; sleep 1; done
           curl -fsS localhost:4800/v1/pricing | head -c 200; echo
           curl -fsS -o /dev/null -w "web /demo %{http_code}\n" localhost:4801/demo
           curl -fsS -o /dev/null -w "web /dashboard %{http_code}\n" localhost:4801/dashboard
-
+      - name: Container logs
+        if: failure()
+        run: docker logs as-collector; docker logs as-web
