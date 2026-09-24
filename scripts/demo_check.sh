@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Done-check (Phases 1-4a):
+# Done-check (Phases 1-4b):
 #   1. docker compose up: collector + web are healthy
-#   2. the web image serves the office, the /demo page and its bundled recording
+#   2. the web image serves the office, /demo (and its bundled recording), /dashboard and /replay
 #   3. approvals and pause / resume / cancel work end to end (scripts/controls_check.sh)
+#   3b. costs, the price table and the stats API (scripts/cost_check.sh)
 #   4. the example's agents show up in the collector live
 #   5. killing the collector mid-run does NOT crash the example (exit code 0)
 set -euo pipefail
@@ -24,17 +25,20 @@ else
   docker compose up -d --build --force-recreate --wait
 fi
 
-step "Checking the web app (office, /demo, bundled recording)"
-for path in / /demo; do
+step "Checking the web app (office, /demo, bundled recording, /dashboard, /replay)"
+for path in / /demo /dashboard "/replay?run=none"; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "$WEB$path")
   [ "$code" = 200 ] || { echo "FAIL: GET $path -> $code"; exit 1; }
 done
 curl -fsS "$WEB/recordings/dev-team.json" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["format"]=="agentspace-recording" and len(r["events"])>10' \
   || { echo "FAIL: recording missing or invalid"; exit 1; }
-echo "ok: /, /demo and the recording are served"
+echo "ok: /, /demo, the recording, /dashboard and /replay are served"
 
 step "Approvals and run controls"
 AGENTSPACE_URL="$COLLECTOR" scripts/controls_check.sh
+
+step "Costs, price table and stats"
+AGENTSPACE_URL="$COLLECTOR" scripts/cost_check.sh
 
 step "Running the example (fake model, 4 runs) in the background"
 (cd examples/langgraph-dev-team && AGENTSPACE_WORKSPACE="$WS" VIRTUAL_ENV= uv run python main.py --fake --runs 4 --latency 0.5) >"$LOG" 2>&1 &
