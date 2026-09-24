@@ -1,0 +1,145 @@
+{
+ "when": "2026-09-24T16:30:35.828Z",
+ "command": "pnpm --filter agentspace-sdk build && node --expose-gc bench/sdk_overhead.mjs",
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": "10",
+  "memory_gb": "16",
+  "os": "Darwin 25.6.0",
+  "node": "v22.17.0"
+ },
+ "calls_per_op": 50000,
+ "latency": {
+  "disabled (baseline)": {
+   "emit": {
+    "p50_us": 0.04,
+    "p99_us": 0.08,
+    "max_us": 355.17
+   },
+   "step (2 events)": {
+    "p50_us": 0.33,
+    "p99_us": 2.17,
+    "max_us": 509.92
+   },
+   "agent scope": {
+    "p50_us": 0.88,
+    "p99_us": 2.79,
+    "max_us": 432
+   },
+   "transport": {
+    "sent": 0,
+    "dropped": 0,
+    "rejected": 0,
+    "pending": 0
+   }
+  },
+  "collector up": {
+   "emit": {
+    "p50_us": 1.13,
+    "p99_us": 4.04,
+    "max_us": 2825.58
+   },
+   "step (2 events)": {
+    "p50_us": 2.96,
+    "p99_us": 7.96,
+    "max_us": 2447.29
+   },
+   "agent scope": {
+    "p50_us": 7.13,
+    "p99_us": 10.75,
+    "max_us": 1372.04
+   },
+   "transport": {
+    "sent": 0,
+    "dropped": 406008,
+    "rejected": 0,
+    "pending": 10000
+   }
+  },
+  "collector down": {
+   "emit": {
+    "p50_us": 1.13,
+    "p99_us": 2.5,
+    "max_us": 1707.79
+   },
+   "step (2 events)": {
+    "p50_us": 3.08,
+    "p99_us": 8.83,
+    "max_us": 4158.67
+   },
+   "agent scope": {
+    "p50_us": 7.38,
+    "p99_us": 20.42,
+    "max_us": 2272.42
+   },
+   "transport": {
+    "sent": 0,
+    "dropped": 406008,
+    "rejected": 0,
+    "pending": 10000
+   }
+  },
+  "collector stalled": {
+   "emit": {
+    "p50_us": 1.13,
+    "p99_us": 1.79,
+    "max_us": 1114.92
+   },
+   "step (2 events)": {
+    "p50_us": 3.04,
+    "p99_us": 4.46,
+    "max_us": 1238.5
+   },
+   "agent scope": {
+    "p50_us": 7.42,
+    "p99_us": 13.08,
+    "max_us": 1916.75
+   },
+   "transport": {
+    "sent": 0,
+    "dropped": 406008,
+    "rejected": 0,
+    "pending": 10000
+   }
+  }
+ },
+ "event_loop": {
+  "disabled (baseline), 20k events flat out": {
+   "p50_ms": 0.99,
+   "p99_ms": 1.03,
+   "max_ms": 1.03
+  },
+  "disabled (baseline), 1,000 events/s for 3 s": {
+   "p50_ms": 1.17,
+   "p99_ms": 1.99,
+   "max_ms": 6.14
+  },
+  "collector up, 20k events flat out": {
+   "p50_ms": 0.99,
+   "p99_ms": 4.85,
+   "max_ms": 8.04
+  },
+  "collector up, 1,000 events/s for 3 s": {
+   "p50_ms": 1.17,
+   "p99_ms": 2.22,
+   "max_ms": 4.26
+  },
+  "collector stalled, 20k events flat out": {
+   "p50_ms": 1,
+   "p99_ms": 2.2,
+   "max_ms": 2.2
+  },
+  "collector stalled, 1,000 events/s for 3 s": {
+   "p50_ms": 1.19,
+   "p99_ms": 1.82,
+   "max_ms": 11.2
+  }
+ },
+ "memory_down": {
+  "events": 200000,
+  "heap_growth_mb": 4.1,
+  "dropped": 190007,
+  "pending": 10000,
+  "gc_exposed": true
+ }
+}
