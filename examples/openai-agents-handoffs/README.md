@@ -11,3 +11,5 @@ uv run python main.py --fake --runs 0  # scripted model, no API key; open http:/
 For real models, add `OPENAI_API_KEY` to `.env` and run `uv run python main.py`.
 
 AgentSpace plugs into the SDK's official tracing processor (`agents.add_trace_processor`), so there are only two lines: `import agentspace` and `agentspace.init()`. `trace_metadata={"agentspace_team": ...}` names the room.
+
+**Pause and cancel.** Cancel works with just those two lines: the run stops at its next span. To make **Pause** hold the run too, the example also passes `hooks=ControlHooks()` (from `agentspace.adapters.openai_agents`) to `Runner.run`. Controls act at safe points only, so a cancel that arrives during the last model call lets that run finish.

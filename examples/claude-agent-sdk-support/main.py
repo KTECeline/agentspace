@@ -7,6 +7,10 @@ approve a refund. While it waits, its desk glows ("needs you").
     uv run python main.py               # real run (needs the Claude Code CLI and a key:
                                         #   OPENROUTER_API_KEY, preferred, or ANTHROPIC_API_KEY)
 
+Add --approve to decide the refund in the office (Approvals tab) instead of the terminal. It uses
+the adapter's approval_callback(), which fails closed: no answer, a timeout or an unreachable
+collector means no refund. It works with --replay too.
+
 Real runs are capped: Haiku by default, at most 6 turns, and --budget (default $0.10).
 """
 
@@ -24,7 +28,13 @@ from typing import Any
 from dotenv import load_dotenv
 
 import agentspace
-from agentspace.adapters.claude_agent_sdk import ClaudeAgentTracker, instrument_options, replay, track
+from agentspace.adapters.claude_agent_sdk import (
+    ClaudeAgentTracker,
+    approval_callback,
+    instrument_options,
+    replay,
+    track,
+)
 
 HERE = Path(__file__).parent
 PROMPT = (
@@ -58,22 +68,39 @@ def provider_env() -> tuple[dict[str, str], str]:
     return {}, os.environ.get("AGENTSPACE_EXAMPLE_MODEL", "claude-haiku-4-5")
 
 
-def run_replay(runs: int, delay: float) -> None:
-    """Feed the recorded hook payloads and messages through the adapter, with pacing."""
+REFUND_TOOL = "mcp__billing__refund"
+
+
+def run_replay(runs: int, delay: float, approve: bool) -> None:
+    """Feed the recorded hook payloads and messages through the adapter, with pacing.
+
+    With ``approve``, the recorded permission request goes through the same approval_callback a
+    real run uses, and a rejected refund is replayed as a failed tool call."""
     recording = json.loads((HERE / "recording.json").read_text())
     n = 0
     while runs == 0 or n < runs:
         n += 1
         tracker = ClaudeAgentTracker(**recording["tracker"])
+        ask = approval_callback({REFUND_TOOL}, tracker=tracker, timeout=300)
         session = f"sess-{n}-{int(time.time())}"  # fresh id per replay: each is its own run
+        denied: str | None = None
         for i, item in enumerate(recording["items"]):
             item = json.loads(json.dumps(item).replace("sess-1", session))
+            data = item.get("data", {})
+            if denied and item.get("hook") == "PostToolUse" and data.get("tool_name") == REFUND_TOOL:
+                item = {**item, "hook": "PostToolUseFailure", "data": {**data, "error": denied}}
             replay([item], tracker)
-            time.sleep(delay * (2.5 if item.get("hook") == "PermissionRequest" else 1))
+            if approve and item.get("hook") == "PermissionRequest" and data.get("tool_name") == REFUND_TOOL:
+                print("Waiting for a decision in the office (Approvals tab)...")
+                result = asyncio.run(ask(REFUND_TOOL, data.get("tool_input", {}), None))
+                denied = None if type(result).__name__ == "PermissionResultAllow" else getattr(result, "message", "Not approved")
+                print("Refund approved." if denied is None else f"Refund refused: {denied}")
+            else:
+                time.sleep(delay * (2.5 if item.get("hook") == "PermissionRequest" else 1))
         print(f"run {n}: replayed {i + 1} recorded hooks/messages")
 
 
-async def run_real(budget: float) -> None:
+async def run_real(budget: float, approve: bool) -> None:
     from claude_agent_sdk import (
         AgentDefinition,
         ClaudeAgentOptions,
@@ -125,7 +152,8 @@ async def run_real(budget: float) -> None:
                 model="haiku",
             )
         },
-        can_use_tool=ask_human,
+        # --approve: decide in the office; otherwise answer y/N in this terminal.
+        can_use_tool=approval_callback({REFUND_TOOL}) if approve else ask_human,
     )
     options = instrument_options(options, name="Support", team="Support Desk", role="customer support lead")
     async for message in track(query(prompt=PROMPT, options=options)):
@@ -142,6 +170,7 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=1, help="replay runs (0 = forever)")
     parser.add_argument("--delay", type=float, default=0.6, help="seconds between replayed items")
     parser.add_argument("--budget", type=float, default=0.10, help="max USD for a real run")
+    parser.add_argument("--approve", action="store_true", help="approve the refund in the office, not the terminal")
     args = parser.parse_args()
     if not args.replay and not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
         print("Set OPENROUTER_API_KEY or ANTHROPIC_API_KEY in .env, or run with --replay.", file=sys.stderr)
@@ -149,12 +178,13 @@ def main() -> int:
 
     agentspace.init()
     if args.replay:
-        run_replay(args.runs, args.delay)
+        run_replay(args.runs, args.delay, args.approve)
     else:
         try:
-            asyncio.run(asyncio.wait_for(run_real(args.budget), timeout=120))
+            # An approval can take a while; without one, 2 minutes is plenty.
+            asyncio.run(asyncio.wait_for(run_real(args.budget, args.approve), timeout=420 if args.approve else 120))
         except TimeoutError:
-            print("Stopped: the run took longer than 2 minutes.", file=sys.stderr)
+            print("Stopped: the run took too long.", file=sys.stderr)
             return 1
     agentspace.flush()
     return 0

@@ -11,3 +11,5 @@ uv run python main.py --fake --runs 0 # scripted LLM, no API key; open http://lo
 For a real model, `cp .env.example .env`, add `ANTHROPIC_API_KEY`, then run `uv run python main.py`. The model is any LiteLLM id (`AGENTSPACE_EXAMPLE_MODEL`).
 
 The only AgentSpace code is two lines, `import agentspace` and `agentspace.init()`: the CrewAI adapter turns on automatically. The example switches CrewAI's own telemetry off.
+
+**Pause and cancel.** CrewAI can't be stopped from an event handler, so the example passes `step_callback=step_checkpoint` (from `agentspace.adapters.crewai`) to the `Crew`. Each agent step is then a safe point: **Pause** in the office holds the crew there, and **Cancel** stops it (the example catches `agentspace.Cancelled` and exits).

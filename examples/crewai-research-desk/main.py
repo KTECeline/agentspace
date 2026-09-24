@@ -29,6 +29,7 @@ from dotenv import load_dotenv  # noqa: E402
 from pydantic import Field  # noqa: E402
 
 import agentspace  # AgentSpace line 1 of 2  # noqa: E402
+from agentspace.adapters.crewai import step_checkpoint  # optional: pause/cancel from the office  # noqa: E402
 
 SOURCES = {
     "agent observability": "Agent observability means tracing each model call, tool call and handoff.",
@@ -80,7 +81,8 @@ def build(llm: BaseLLM | LLM) -> Crew:
         Task(name="check", description="Verify the research against the notes.", expected_output="A verdict", agent=checker),
         Task(name="report", description="Write a three-line report.", expected_output="Markdown", agent=writer),
     ]
-    return Crew(name="Research Desk", agents=[researcher, checker, writer], tasks=tasks, process=Process.sequential, verbose=False)
+    # step_callback: each agent step is a safe point, so Pause and Cancel in the office work.
+    return Crew(name="Research Desk", agents=[researcher, checker, writer], tasks=tasks, process=Process.sequential, verbose=False, step_callback=step_checkpoint)
 
 
 def main() -> int:
@@ -104,7 +106,11 @@ def main() -> int:
             if args.fake
             else LLM(model=os.environ.get("AGENTSPACE_EXAMPLE_MODEL", "anthropic/claude-sonnet-5"))
         )
-        out = build(llm).kickoff()
+        try:
+            out = build(llm).kickoff()
+        except agentspace.Cancelled:
+            print(f"run {n}: cancelled from the office")
+            break
         print(f"run {n}: {str(out).splitlines()[0]}")
     agentspace.flush()
     return 0

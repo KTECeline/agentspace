@@ -106,6 +106,9 @@ jobs:
             args: --fake --latency 0
           - example: claude-agent-sdk-support
             args: --replay --delay 0
+          # No collector: the refund approval must fail closed (refused), not hang.
+          - example: claude-agent-sdk-support
+            args: --replay --approve --delay 0
           - example: otel-generic
             args: --latency 0
     defaults:

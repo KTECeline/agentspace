@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
 
 import agentspace  # AgentSpace line 1 of 2
+from agentspace.adapters.openai_agents import ControlHooks  # optional: pause/cancel from the office
 
 
 @function_tool
@@ -86,11 +87,16 @@ async def main_async(args: argparse.Namespace) -> None:
     while args.runs == 0 or n < args.runs:
         n += 1
         model = ScriptedModel(script(), args.latency) if args.fake else None
-        result = await Runner.run(
-            build(model),
-            "Was invoice 42 paid?",
-            run_config=RunConfig(workflow_name="support-desk", trace_metadata={"agentspace_team": "Support Desk"}),
-        )
+        try:
+            result = await Runner.run(
+                build(model),
+                "Was invoice 42 paid?",
+                run_config=RunConfig(workflow_name="support-desk", trace_metadata={"agentspace_team": "Support Desk"}),
+                hooks=ControlHooks(),  # optional: lets Pause in the office hold the run
+            )
+        except agentspace.Cancelled:
+            print(f"run {n}: cancelled from the office")
+            break
         print(f"run {n}: {result.final_output}")
 
 
