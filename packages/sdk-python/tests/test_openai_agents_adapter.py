@@ -173,3 +173,17 @@ def test_control_hooks_pause_until_resumed(collector: FakeCollector) -> None:
     blocked = [e for e in ev if e["type"] == "agent.status" and e["data"]["status"] == "blocked"]
     assert blocked and blocked[0]["agent_id"] == "billing"
     assert [e["data"]["status"] for e in ev if e["type"] == "run.finished"] == ["ok"]
+
+
+def test_usage_reads_cache_tokens() -> None:
+    from agents.tracing.span_data import GenerationSpanData
+
+    data = GenerationSpanData(
+        model="gpt-5-mini",
+        usage={
+            "input_tokens": 900,
+            "output_tokens": 30,
+            "input_tokens_details": {"cached_tokens": 512, "cache_write_tokens": 0},
+        },
+    )
+    assert oa._usage(data) == ("gpt-5-mini", 900, 30, 512, None)

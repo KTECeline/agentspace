@@ -296,7 +296,7 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                 if kind == "agent":
                     self._status(node, "error" if err else "idle", err_msg)
             elif kind in ("generation", "response"):
-                model, tin, tout = _usage(data)
+                model, tin, tout, cread, cwrite = _usage(data)
                 self._emit(
                     node,
                     "llm.call",
@@ -309,6 +309,8 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                     },
                     tokens_in=tin,
                     tokens_out=tout,
+                    tokens_cache_read=cread,
+                    tokens_cache_write=cwrite,
                     model=model,
                     summary=f"{model or 'model'} replied",
                 )
@@ -377,8 +379,9 @@ class AgentSpaceTracingProcessor(TracingProcessor):
         _api.flush(timeout=2.0)
 
 
-def _usage(data: Any) -> tuple[str | None, int | None, int | None]:
-    """Model name and token usage from a generation or response span."""
+def _usage(data: Any) -> tuple[str | None, int | None, int | None, int | None, int | None]:
+    """Model name and token usage (input, output, cache read, cache write) from a generation or
+    response span. OpenAI counts cached tokens inside ``input_tokens``."""
     usage = getattr(data, "usage", None)
     model = getattr(data, "model", None)
     response = getattr(data, "response", None)
@@ -387,9 +390,20 @@ def _usage(data: Any) -> tuple[str | None, int | None, int | None]:
         usage = usage or getattr(response, "usage", None)
     if isinstance(usage, dict):
         tin, tout = usage.get("input_tokens"), usage.get("output_tokens")
+        details = usage.get("input_tokens_details") or {}
+        cread, cwrite = details.get("cached_tokens"), details.get("cache_write_tokens")
     else:
         tin, tout = getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None)
-    return (str(model) if model else None, _int(tin), _int(tout))
+        details = getattr(usage, "input_tokens_details", None)
+        cread = getattr(details, "cached_tokens", None)
+        cwrite = getattr(details, "cache_write_tokens", None)
+    return (
+        str(model) if model else None,
+        _int(tin),
+        _int(tout),
+        _int(cread) or None,
+        _int(cwrite) or None,
+    )
 
 
 def _int(v: Any) -> int | None:

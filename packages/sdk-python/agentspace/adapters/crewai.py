@@ -389,6 +389,9 @@ class AgentSpaceCrewListener(BaseEventListener):
         usage = getattr(ev, "usage", None) or {}
         tin = usage.get("prompt_tokens", usage.get("input_tokens"))
         tout = usage.get("completion_tokens", usage.get("output_tokens"))
+        # CrewAI flattens provider cache counts into these keys (LLM._usage_to_dict).
+        cread = usage.get("cached_prompt_tokens")
+        cwrite = usage.get("cache_creation_tokens")
         response = getattr(ev, "response", None)
         text = response if isinstance(response, str) else None
         captured = self._content("llm.output", text)
@@ -415,6 +418,8 @@ class AgentSpaceCrewListener(BaseEventListener):
             agent_id,
             tokens_in=_int(tin),
             tokens_out=_int(tout),
+            tokens_cache_read=_int(cread) or None,
+            tokens_cache_write=_int(cwrite) or None,
             model=getattr(ev, "model", None),
             summary=summary,
         )

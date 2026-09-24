@@ -236,3 +236,21 @@ def test_request_approval_inside_a_tool_is_attached_to_the_node(collector: FakeC
     started = collector.of_type("run.started")[0]
     assert req["run_id"] == started["run_id"]
     assert (req["agent_id"], req["team_id"]) == ("triage", "dev-team")
+
+
+def test_usage_reads_cache_tokens() -> None:
+    from langchain_core.messages import AIMessage
+
+    from agentspace.adapters.langgraph import _usage
+
+    msg = AIMessage(
+        content="hi",
+        usage_metadata={
+            "input_tokens": 1000,
+            "output_tokens": 20,
+            "total_tokens": 1020,
+            "input_token_details": {"cache_read": 600, "cache_creation": 100},
+        },
+    )
+    assert _usage(msg, None) == (1000, 20, 600, 100)
+    assert _usage(AIMessage(content="hi"), None) == (None, None, None, None)

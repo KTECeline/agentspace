@@ -22,7 +22,8 @@ Mapping:
 - Task/Agent tool, SubagentStart  -> subagent desk (id = agent type) + handoff from the main agent
 - SubagentStop                    -> subagent step finished
 - PermissionRequest / permission Notification -> waiting_human ("needs you")
-- AssistantMessage (via track)    -> llm.call with model and tokens
+- AssistantMessage (via track)    -> llm.call with model, tokens and cache tokens
+                                     (cost_source="reported": the cost comes on ResultMessage)
 - ResultMessage (via track)       -> session cost (an llm.call carrying only cost_usd)
 
 Controls: every PreToolUse is a safe point. While the run is paused the hook waits (off the
@@ -546,6 +547,11 @@ class ClaudeAgentTracker:
             entry["agent_id"],
             tokens_in=tin or None,
             tokens_out=usage.get("output_tokens"),
+            tokens_cache_read=usage.get("cache_read_input_tokens") or None,
+            tokens_cache_write=usage.get("cache_creation_input_tokens") or None,
+            # The SDK bills the whole session on ResultMessage (see _result), so the collector
+            # must not also estimate a price for each message.
+            cost_source="reported",
             model=entry["model"],
             summary=summary,
         )
@@ -567,6 +573,7 @@ class ClaudeAgentTracker:
                 },
                 s.main_id,
                 cost_usd=float(cost),
+                cost_source="reported",
                 summary=f"session cost ${float(cost):.4f} ({getattr(msg, 'num_turns', '?')} turns)",
             )
         cancelled = self._cancelled(s)

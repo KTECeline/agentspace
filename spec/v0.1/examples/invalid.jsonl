@@ -4,3 +4,4 @@
 {"spec_version":"0.1","id":"x4","type":"message","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","team_id":null,"parent_id":null,"data":{}}
 {"spec_version":"0.1","id":"x5","type":"llm.call","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"tokens_in":-5,"data":{}}
 {"spec_version":"0.1","id":"x6","type":"handoff","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"data":{"from_agent_id":"a"}}
+{"spec_version":"0.1","id":"x7","type":"llm.call","ts":"2026-09-23T10:00:00Z","workspace":"default","run_id":"r1","agent_id":"a","team_id":null,"parent_id":null,"cost_usd":0.01,"cost_source":"guessed","data":{"provider":"anthropic"}}

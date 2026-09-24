@@ -144,7 +144,22 @@ export interface EventBase {
    * OTel: gen_ai.usage.output_tokens.
    */
   tokens_out?: number;
+  /**
+   * Part of tokens_in read from the provider's prompt cache. OTel: gen_ai.usage.cache_read.input_tokens.
+   */
+  tokens_cache_read?: number;
+  /**
+   * Part of tokens_in written to the provider's prompt cache. OTel: gen_ai.usage.cache_creation.input_tokens.
+   */
+  tokens_cache_write?: number;
+  /**
+   * Cost in USD. Counted in totals on llm.call only.
+   */
   cost_usd?: number;
+  /**
+   * Where cost_usd comes from. "reported": the framework or provider reported it (the default when cost_usd is set); with no cost_usd it means the cost is reported on another event, so the collector must not estimate one. "estimated": the collector priced the tokens from its price table (see DECISIONS D-037).
+   */
+  cost_source?: "reported" | "estimated";
   /**
    * OTel: gen_ai.response.model (or gen_ai.request.model).
    */

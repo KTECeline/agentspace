@@ -61,6 +61,9 @@ def test_session_replay(collector: FakeCollector, validator: Draft202012Validato
     cost = [e for e in llm if e.get("cost_usd")]
     assert len(cost) == 1 and cost[0]["cost_usd"] == pytest.approx(0.0231)
     assert not cost[0].get("tokens_in")  # cost entry never double counts tokens
+    # The SDK bills the session, so no message may be priced again by the collector (D-037).
+    assert all(e.get("cost_source") == "reported" for e in llm)
+    assert (llm[0].get("tokens_cache_read"), llm[0].get("tokens_cache_write")) == (1200, None)
 
     statuses = [(e["agent_id"], e["data"]["status"]) for e in ev if e["type"] == "agent.status"]
     assert ("support", "waiting_human") in statuses  # the refund needed approval

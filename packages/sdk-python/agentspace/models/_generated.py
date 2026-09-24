@@ -98,7 +98,29 @@ class EventBase(BaseModel):
     tokens_out: Annotated[
         int | None, Field(description="OTel: gen_ai.usage.output_tokens.", ge=0)
     ] = None
-    cost_usd: Annotated[float | None, Field(ge=0.0)] = None
+    tokens_cache_read: Annotated[
+        int | None,
+        Field(
+            description="Part of tokens_in read from the provider's prompt cache. OTel: gen_ai.usage.cache_read.input_tokens.",
+            ge=0,
+        ),
+    ] = None
+    tokens_cache_write: Annotated[
+        int | None,
+        Field(
+            description="Part of tokens_in written to the provider's prompt cache. OTel: gen_ai.usage.cache_creation.input_tokens.",
+            ge=0,
+        ),
+    ] = None
+    cost_usd: Annotated[
+        float | None, Field(description="Cost in USD. Counted in totals on llm.call only.", ge=0.0)
+    ] = None
+    cost_source: Annotated[
+        Literal["reported", "estimated"] | None,
+        Field(
+            description='Where cost_usd comes from. "reported": the framework or provider reported it (the default when cost_usd is set); with no cost_usd it means the cost is reported on another event, so the collector must not estimate one. "estimated": the collector priced the tokens from its price table (see DECISIONS D-037).'
+        ),
+    ] = None
     model: Annotated[
         str | None,
         Field(description="OTel: gen_ai.response.model (or gen_ai.request.model).", max_length=256),

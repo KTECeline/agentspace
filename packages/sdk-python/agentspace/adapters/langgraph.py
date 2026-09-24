@@ -474,6 +474,8 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
                 },
                 tokens_in=usage[0],
                 tokens_out=usage[1],
+                tokens_cache_read=usage[2],
+                tokens_cache_write=usage[3],
                 model=model,
                 summary=summary,
             )
@@ -709,15 +711,23 @@ def _first_generation(response: Any) -> tuple[Any, str | None, str | None]:
     return message, text, str(finish) if finish else None
 
 
-def _usage(message: Any, response: Any) -> tuple[int | None, int | None]:
+def _usage(message: Any, response: Any) -> tuple[int | None, int | None, int | None, int | None]:
+    """(input, output, cache read, cache write) tokens. LangChain's ``input_tokens`` already
+    includes the cached tokens; ``input_token_details`` breaks them out."""
     um = getattr(message, "usage_metadata", None)
     if um:
-        return um.get("input_tokens"), um.get("output_tokens")
+        details = um.get("input_token_details") or {}
+        return (
+            um.get("input_tokens"),
+            um.get("output_tokens"),
+            details.get("cache_read") or None,
+            details.get("cache_creation") or None,
+        )
     llm_output = getattr(response, "llm_output", None) or {}
     usage = llm_output.get("usage") or llm_output.get("token_usage") or {}
     tin = usage.get("input_tokens", usage.get("prompt_tokens"))
     tout = usage.get("output_tokens", usage.get("completion_tokens"))
-    return tin, tout
+    return tin, tout, None, None
 
 
 def _response_model(message: Any, response: Any) -> str | None:

@@ -137,7 +137,11 @@ def stats() -> dict[str, int]:
 def emit(type: str, data: dict[str, Any] | None = None, **fields: Any) -> str | None:
     """Emit a raw spec event. Envelope fields (``run_id``, ``agent_id``, ``team_id``,
     ``parent_id``) default to the current context. ``tokens_in``, ``tokens_out``,
-    ``cost_usd``, ``model``, ``summary`` and ``attributes`` may be passed as keywords."""
+    ``tokens_cache_read``, ``tokens_cache_write``, ``cost_usd``, ``cost_source``, ``model``,
+    ``summary`` and ``attributes`` may be passed as keywords.
+
+    Leave ``cost_usd`` unset to let the collector estimate the cost from its price table. Pass
+    ``cost_source="reported"`` without a cost when the framework reports it on another event."""
     try:
         return _client.emit(type, data, **fields) if _client else None
     except Exception as exc:

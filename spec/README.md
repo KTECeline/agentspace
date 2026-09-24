@@ -47,6 +47,7 @@ These are mapped against [open-telemetry/semantic-conventions-genai](https://git
 | `llm.call.data.operation` | `gen_ai.operation.name` |
 | `model` | `gen_ai.response.model` (else `gen_ai.request.model`) |
 | `tokens_in` / `tokens_out` | `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` |
+| `tokens_cache_read` / `tokens_cache_write` | `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` (both are part of the input tokens) |
 | `llm.call.data.finish_reason` | `gen_ai.response.finish_reasons[0]` |
 | `llm.call.data.input` / `.output` | `gen_ai.input.messages` / `gen_ai.output.messages` (opt-in content) |
 | `tool.call` + `tool.result` | `execute_tool {gen_ai.tool.name}` span (start/end) |
@@ -55,7 +56,7 @@ These are mapped against [open-telemetry/semantic-conventions-genai](https://git
 | `error.data.kind` | `error.type` |
 | `attributes` | any other span attributes |
 
-These have no OTel equivalent yet, so they're AgentSpace-only: `agent.status`, `handoff`, `message`, `approval.*`, `team_id`, `cost_usd`.
+These have no OTel equivalent yet, so they're AgentSpace-only: `agent.status`, `handoff`, `message`, `approval.*`, `team_id`, `cost_usd`, `cost_source`.
 
 ### OTLP ingest (`POST /v1/traces`)
 

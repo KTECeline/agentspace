@@ -44,7 +44,12 @@ class ScriptedLLM(BaseLLM):
                 from_task=from_task,
                 from_agent=from_agent,
                 messages=messages,
-                usage={"prompt_tokens": tin, "completion_tokens": tout},
+                usage={
+                    "prompt_tokens": tin,
+                    "completion_tokens": tout,
+                    # as CrewAI flattens provider cache counts (LLM._usage_to_dict)
+                    "cached_prompt_tokens": tin // 2,
+                },
             )
             return text
 

@@ -72,6 +72,7 @@ def test_details(collector: FakeCollector) -> None:
         ("researcher", 910, 44),
         ("writer", 1180, 96),
     ]
+    assert [e.get("tokens_cache_read") for e in llm] == [310, 455, 590]
     assert llm[0]["summary"] == "chose tool: web_search"
     assert all("output" not in e["data"] for e in llm)  # privacy by default
     (handoff,) = [e for e in ev if e["type"] == "handoff"]

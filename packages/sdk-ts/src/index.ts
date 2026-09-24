@@ -65,7 +65,7 @@ interface AgentInfo {
   framework: string;
 }
 
-type EnvelopeExtras = Partial<Pick<AgentSpaceEvent, "tokens_in" | "tokens_out" | "cost_usd" | "model" | "summary" | "attributes">>;
+type EnvelopeExtras = Partial<Pick<AgentSpaceEvent, "tokens_in" | "tokens_out" | "tokens_cache_read" | "tokens_cache_write" | "cost_usd" | "cost_source" | "model" | "summary" | "attributes">>;
 export interface EmitFields extends EnvelopeExtras {
   runId?: string;
   agentId?: string | null;
@@ -181,7 +181,7 @@ class Client implements ControlHost {
       parent_id: parentId,
       data: Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null)),
     };
-    for (const key of ["tokens_in", "tokens_out", "cost_usd", "model", "summary", "attributes"] as const) {
+    for (const key of ["tokens_in", "tokens_out", "tokens_cache_read", "tokens_cache_write", "cost_usd", "cost_source", "model", "summary", "attributes"] as const) {
       if (f[key] !== undefined && f[key] !== null) ev[key] = f[key];
     }
     if (typeof ev.summary === "string") ev.summary = truncate(ev.summary, 500);

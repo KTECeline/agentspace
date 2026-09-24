@@ -29,7 +29,17 @@ class _Unset:
 
 UNSET: Any = _Unset()
 
-_ENVELOPE_OPTIONALS = ("tokens_in", "tokens_out", "cost_usd", "model", "summary", "attributes")
+_ENVELOPE_OPTIONALS = (
+    "tokens_in",
+    "tokens_out",
+    "tokens_cache_read",
+    "tokens_cache_write",
+    "cost_usd",
+    "cost_source",
+    "model",
+    "summary",
+    "attributes",
+)
 
 
 @dataclass

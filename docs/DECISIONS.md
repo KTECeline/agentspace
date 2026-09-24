@@ -267,3 +267,13 @@ What broke and what changed:
 - `.gitignore` ignores `*.pem`, `*.crt` and `*.key`. It's documented in CONTRIBUTING.md.
 
 **Why:** some networks intercept TLS. Trusting their CA explicitly is safe; disabling verification isn't, and committing a company certificate would leak it into a public repo.
+
+## D-037 · Cost sources and cache tokens on the event envelope (2026-09-24)
+**Decision:** three new optional envelope fields (an additive change to the v0.1 draft):
+- `cost_source`: `"reported"` or `"estimated"`.
+  - `"reported"` means the framework or provider gave the cost. It's assumed whenever an SDK sets `cost_usd`, and the collector never overwrites it.
+  - `"reported"` **without** `cost_usd` means "this call's cost is reported on another event; don't estimate it". The Claude Agent SDK adapter uses it on each message, because the SDK bills the whole session on `ResultMessage`.
+  - `"estimated"` is set only by the collector, when it prices an `llm.call` that has tokens but neither `cost_usd` nor `cost_source`.
+- `tokens_cache_read` / `tokens_cache_write`: the part of `tokens_in` read from or written to the provider's prompt cache (OTel `gen_ai.usage.cache_read.input_tokens` / `cache_creation.input_tokens`, which are also counted in input tokens). Adapters fill them from each framework's usage data.
+
+**Why:** estimating every call that has tokens but no cost would double count the Claude Agent SDK's billed sessions, and pricing cache reads at the full input rate overcharges them by up to 10×. A field on the event keeps estimated cost auditable in the log, in recordings and in replays, instead of hiding it in a projection.
