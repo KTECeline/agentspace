@@ -20,3 +20,7 @@ data/
 *.db-shm
 *.db-wal
 .DS_Store
+# Never commit certificates or keys (e.g. a local corporate CA for Docker builds).
+*.pem
+*.crt
+*.key

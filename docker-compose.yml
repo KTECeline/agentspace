@@ -6,6 +6,9 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        # Off by default. See CONTRIBUTING.md ("Building behind a TLS-intercepting proxy").
+        EXTRA_CA_CERT: ${AGENTSPACE_EXTRA_CA_CERT:-}
     image: agentspace-collector:dev
     ports:
       - "${AGENTSPACE_COLLECTOR_PORT:-4800}:4800"
@@ -20,6 +23,9 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
+      args:
+        # Off by default. See CONTRIBUTING.md ("Building behind a TLS-intercepting proxy").
+        EXTRA_CA_CERT: ${AGENTSPACE_EXTRA_CA_CERT:-}
     image: agentspace-web:dev
     ports:
       - "${AGENTSPACE_WEB_PORT:-4801}:4801"
