@@ -1,22 +1,38 @@
 "use client";
 
 import { create } from "zustand";
-import type { WsServerMessage } from "@agentspace/spec-types";
+import type { ServerInfo, WsServerMessage } from "@agentspace/spec-types";
+import { loadToken, saveToken } from "./collector";
 import { emptyState, reduce, type OfficeState } from "./state";
 
-export type Connection = "connecting" | "live" | "reconnecting" | "offline" | "recording";
+export type Connection = "connecting" | "live" | "reconnecting" | "offline" | "recording" | "unauthorized";
+
+/** The live collector this page talks to (null for recordings and the stress test). */
+export interface CollectorTarget {
+  url: string;
+  workspace: string;
+}
 
 interface OfficeStore extends OfficeState {
   connection: Connection;
   sourceError: string | null;
   selectedAgent: string | null;
   hoveredAgent: string | null;
+  collector: CollectorTarget | null;
+  /** GET /v1/info, once loaded. */
+  info: ServerInfo | null;
+  /** Operator token (kept in localStorage). */
+  token: string | null;
+  tokenDialogOpen: boolean;
   apply: (msgs: WsServerMessage[]) => void;
   reset: () => void;
   setConnection: (c: Connection) => void;
   setSourceError: (e: string | null) => void;
   select: (agentId: string | null) => void;
   hover: (agentId: string | null) => void;
+  setCollector: (c: CollectorTarget | null, info?: ServerInfo | null) => void;
+  setToken: (token: string | null) => void;
+  openTokenDialog: (open: boolean) => void;
 }
 
 export const useOffice = create<OfficeStore>()((set) => ({
@@ -25,6 +41,10 @@ export const useOffice = create<OfficeStore>()((set) => ({
   sourceError: null,
   selectedAgent: null,
   hoveredAgent: null,
+  collector: null,
+  info: null,
+  token: null,
+  tokenDialogOpen: false,
   apply: (msgs) =>
     set((s) => {
       let next: OfficeState = s;
@@ -36,7 +56,18 @@ export const useOffice = create<OfficeStore>()((set) => ({
   setSourceError: (sourceError) => set({ sourceError }),
   select: (selectedAgent) => set({ selectedAgent }),
   hover: (hoveredAgent) => set({ hoveredAgent }),
+  setCollector: (collector, info = null) => set({ collector, info, token: collector ? loadToken() : null }),
+  setToken: (token) => {
+    saveToken(token);
+    set({ token });
+  },
+  openTokenDialog: (tokenDialogOpen) => set({ tokenDialogOpen }),
 }));
+
+/** Operator actions are possible: a live collector that isn't in public read-only mode. */
+export function useCanOperate(): boolean {
+  return useOffice((s) => !!s.collector && !!s.info && s.info.operator_enabled);
+}
 
 // ---------------------------------------------------------------------------
 // Frame batching: sources enqueue messages; they are applied at most once per animation

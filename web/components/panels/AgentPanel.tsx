@@ -9,6 +9,7 @@ import { useOffice } from "@/lib/store";
 import { useNow } from "@/lib/useNow";
 import { useThrottled } from "@/lib/useThrottled";
 import { StatusBadge } from "../StatusBadge";
+import { ApprovalCard } from "../operator/Approvals";
 
 const EMPTY: StoredEvent[] = [];
 
@@ -20,6 +21,11 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
   const now = useNow();
   const heading = useRef<HTMLHeadingElement>(null);
   const [hideStatus, setHideStatus] = useState(true);
+  const approvalMap = useOffice((s) => s.approvals);
+  const approvals = useMemo(
+    () => Object.values(approvalMap).filter((a) => a.agent_id === agentId && a.status === "pending"),
+    [approvalMap, agentId],
+  );
 
   // Move focus into the panel when it opens (important when it was opened from the 3D canvas).
   useEffect(() => {
@@ -79,6 +85,15 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
           <Stat label="Model" value={agent.model ?? "—"} />
           <Stat label="Active" value={timeAgo(agent.last_event_at, now)} />
         </dl>
+
+        {approvals.length > 0 && (
+          <div className="flex flex-col gap-2 border-b border-border p-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Waiting for you</h3>
+            {approvals.map((a) => (
+              <ApprovalCard key={a.approval_id} approval={a} showAgent={false} />
+            ))}
+          </div>
+        )}
 
         <div className="border-b border-border p-4">
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Now</h3>

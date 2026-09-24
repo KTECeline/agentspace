@@ -347,7 +347,11 @@ class step(_Scope):
                 "name": self.name,
                 "ok": exc is None,
                 "duration_ms": round((time.monotonic() - self._t0) * 1000, 1),
-                "error": truncate(repr(exc), 2000) if exc else None,
+                "error": "cancelled"
+                if isinstance(exc, Cancelled)
+                else truncate(repr(exc), 2000)
+                if exc
+                else None,
             },
         )
 

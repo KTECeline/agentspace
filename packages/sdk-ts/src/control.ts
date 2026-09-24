@@ -193,12 +193,14 @@ function announce(host: ControlHost, status: string, detail: string, who?: Recor
   else if (host.currentAgentId()) host.emit("agent.status", { status, detail }, {});
 }
 
+/** In raise mode the error unwinds through agent() scopes, which mark agents "done
+ * (cancelled)" themselves; only flag mode needs to announce it here. */
 function cancelled(host: ControlHost, runId: string, who?: Record<string, unknown>): false {
+  if (host.cancelMode === "raise") throw new Cancelled(runId);
   if (!host.cancelAnnounced.has(runId)) {
     host.cancelAnnounced.add(runId);
     announce(host, "done", "cancelled by an operator", who);
   }
-  if (host.cancelMode === "raise") throw new Cancelled(runId);
   return false;
 }
 

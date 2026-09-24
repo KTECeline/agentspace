@@ -263,12 +263,16 @@ def _show(status: str, detail: str | None, who: dict[str, Any] | None) -> None:
 
 
 def _cancelled(client: Client, rid: str, who: dict[str, Any] | None = None) -> bool:
-    """Handle a cancel. Returns False in flag mode; raises in raise mode."""
+    """Handle a cancel. Returns False in flag mode; raises in raise mode.
+
+    In raise mode the exception unwinds through agent scopes / adapter hooks, which mark the
+    agents "done (cancelled)" themselves; only flag mode needs to announce it here.
+    """
+    if client.config.cancel_mode == "raise":
+        raise Cancelled(rid)
     if rid not in client.cancel_announced:
         client.cancel_announced.add(rid)
         _show("done", "cancelled by an operator", who)
-    if client.config.cancel_mode == "raise":
-        raise Cancelled(rid)
     return False
 
 

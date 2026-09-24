@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Box, LayoutGrid, RefreshCw } from "lucide-react";
+import { Box, Eye, KeyRound, LayoutGrid, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
 import { formatCost, formatDuration, formatTokens } from "@/lib/format";
 import { latestRun } from "@/lib/state";
@@ -11,6 +11,9 @@ import { useSource, type SourceConfig } from "@/lib/useSource";
 import { useThrottled } from "@/lib/useThrottled";
 import { useViewMode, type ViewMode } from "@/lib/useViewMode";
 import { Grid2D } from "./office2d/Grid2D";
+import { ApprovalsPanel, usePendingCount } from "./operator/Approvals";
+import { RunControls } from "./operator/RunControls";
+import { TokenButton } from "./operator/TokenDialog";
 import { ScenarioPicker } from "./ScenarioPicker";
 import { AgentPanel } from "./panels/AgentPanel";
 import { EventLog } from "./panels/EventLog";
@@ -40,6 +43,10 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
   const agents = useMemo(() => Object.values(agentsById), [agentsById]);
   const run = useThrottled(useOffice((s) => latestRun(s.runs)), 250);
   const [logFilter, setLogFilter] = useState<string | null>(null);
+  const [tab, setTab] = useState<"activity" | "approvals">("activity");
+  const pendingApprovals = usePendingCount();
+  const publicMode = useOffice((s) => !!s.info?.public_readonly);
+  const openTokenDialog = useOffice((s) => s.openTokenDialog);
   const selectedAgent = useOffice((s) => s.selectedAgent);
   const select = useOffice((s) => s.select);
 
@@ -52,14 +59,49 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
         <h1 className="font-display text-xl font-semibold tracking-tight">AgentSpace</h1>
         <span className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-muted">workspace: {workspace}</span>
         <ConnectionPill connection={connection} onRetry={retry} />
+        {publicMode && (
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 text-xs text-muted">
+            <Eye aria-hidden className="size-3.5" />
+            Read-only
+          </span>
+        )}
+        {pendingApprovals > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              select(null);
+              setTab("approvals");
+            }}
+            data-status="waiting_human"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[var(--st-bg)] px-3 text-sm font-medium text-[var(--st-fg)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span aria-hidden className="status-dot size-2 rounded-full bg-[var(--st-dot)]" />
+            {pendingApprovals === 1 ? "1 approval waiting" : `${pendingApprovals} approvals waiting`}
+          </button>
+        )}
         {scenario && <ScenarioPicker current={scenario} />}
         {run && <RunSummary run={run} />}
         <ViewToggle mode={view.mode} onChange={view.setMode} webgl={view.webgl} />
+        {collectorUrl && !publicMode && <TokenButton onSaved={retry} />}
       </header>
 
       {error ? (
         <Problem title="Something went wrong" onRetry={() => location.reload()}>
           {error}
+        </Problem>
+      ) : connection === "unauthorized" && collectorUrl ? (
+        <Problem
+          title="This office is private"
+          onRetry={() => openTokenDialog(true)}
+          action={
+            <>
+              <KeyRound aria-hidden className="size-4" />
+              Add token
+            </>
+          }
+        >
+          The collector at <code className="font-mono text-foreground">{collectorUrl}</code> needs a token to watch it. Use the operator token or an API
+          key for this workspace.
         </Problem>
       ) : connection === "offline" && !ready && collectorUrl ? (
         <Problem title="Can’t reach the collector" onRetry={retry}>
@@ -89,7 +131,16 @@ export function OfficeApp({ source, showFps = false, scenario }: Props) {
               }}
             />
           ) : (
-            <EventLog events={events} agents={agents} agentFilter={logFilter} onAgentFilter={setLogFilter} />
+            <div className="flex min-h-0 flex-col gap-2">
+              <RightTabs tab={tab} onChange={setTab} pending={pendingApprovals} />
+              <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
+                {tab === "approvals" ? (
+                  <ApprovalsPanel />
+                ) : (
+                  <EventLog events={events} agents={agents} agentFilter={logFilter} onAgentFilter={setLogFilter} />
+                )}
+              </div>
+            </div>
           )}
         </main>
       )}
@@ -129,13 +180,14 @@ function ViewToggle({ mode, onChange, webgl }: { mode: ViewMode; onChange: (m: V
 }
 
 function ConnectionPill({ connection, onRetry }: { connection: Connection; onRetry: () => void }) {
-  const tone = { live: "done", connecting: "waiting", reconnecting: "using_tool", offline: "error", recording: "thinking" }[connection];
+  const tone = { live: "done", connecting: "waiting", reconnecting: "using_tool", offline: "error", recording: "thinking", unauthorized: "waiting_human" }[connection];
   const label = {
     live: "Live",
     connecting: "Connecting…",
     reconnecting: "Reconnecting…",
     offline: "Collector offline",
     recording: "Recorded demo",
+    unauthorized: "Needs a token",
   }[connection];
   return (
     <span className="flex items-center gap-1" role="status">
@@ -157,16 +209,58 @@ function ConnectionPill({ connection, onRetry }: { connection: Connection; onRet
   );
 }
 
-function RunSummary({ run }: { run: RunState }) {
-  const status = run.status === "running" ? "thinking" : run.status === "ok" ? "done" : "error";
+function RightTabs({ tab, onChange, pending }: { tab: "activity" | "approvals"; onChange: (t: "activity" | "approvals") => void; pending: number }) {
+  const tabs = [
+    { id: "activity" as const, label: "Activity" },
+    { id: "approvals" as const, label: pending ? `Approvals (${pending})` : "Approvals" },
+  ];
   return (
-    <dl className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="Latest run">
+    <div
+      role="tablist"
+      aria-label="Side panel"
+      className="flex self-start rounded-lg border border-border bg-surface p-0.5"
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          const next = tab === "activity" ? "approvals" : "activity";
+          onChange(next);
+          document.getElementById(`tab-${next}`)?.focus();
+        }
+      }}
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          id={`tab-${t.id}`}
+          type="button"
+          role="tab"
+          aria-selected={tab === t.id}
+          aria-controls={`panel-${t.id}`}
+          tabIndex={tab === t.id ? 0 : -1}
+          onClick={() => onChange(t.id)}
+          className={`inline-flex h-9 items-center rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            tab === t.id ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RunSummary({ run }: { run: RunState }) {
+  const paused = run.status === "running" && run.control === "paused";
+  const status = paused ? "blocked" : run.status === "running" ? "thinking" : run.status === "ok" ? "done" : run.status === "cancelled" ? "waiting" : "error";
+  const label = paused ? "paused" : run.status;
+  return (
+    <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+    <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="Latest run">
       <div className="flex items-center gap-2">
         <dt className="sr-only">Run</dt>
         <dd data-status={status} className="inline-flex items-center gap-1.5 font-medium">
           <span aria-hidden className="status-dot size-2 rounded-full bg-[var(--st-dot)]" />
           {run.name ?? run.run_id.slice(0, 8)}
-          <span className="text-muted">· {run.status}</span>
+          <span className="text-muted">· {label}</span>
         </dd>
       </div>
       <Stat label="Duration" value={run.duration_ms != null ? formatDuration(run.duration_ms) : "—"} />
@@ -174,6 +268,8 @@ function RunSummary({ run }: { run: RunState }) {
       <Stat label="Cost" value={formatCost(run.cost_usd)} />
       <Stat label="Events" value={String(run.event_count)} />
     </dl>
+    <RunControls run={run} />
+    </div>
   );
 }
 
@@ -224,7 +320,7 @@ agentspace.init(url="${collectorUrl}"${wsArg})
   );
 }
 
-function Problem({ title, children, onRetry }: { title: string; children: React.ReactNode; onRetry: () => void }) {
+function Problem({ title, children, onRetry, action }: { title: string; children: React.ReactNode; onRetry: () => void; action?: React.ReactNode }) {
   return (
     <div role="alert" className="flex flex-col items-start gap-3 rounded-xl border border-border bg-surface p-8">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -234,8 +330,12 @@ function Problem({ title, children, onRetry }: { title: string; children: React.
         onClick={onRetry}
         className="inline-flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        <RefreshCw aria-hidden className="size-4" />
-        Retry now
+        {action ?? (
+          <>
+            <RefreshCw aria-hidden className="size-4" />
+            Retry now
+          </>
+        )}
       </button>
     </div>
   );

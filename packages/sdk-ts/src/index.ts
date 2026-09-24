@@ -436,7 +436,7 @@ export function step<T>(name: string, fn: () => T, kind: "agent" | "chain" | "cu
     (err) =>
       emit(
         "step.finished",
-        { step_id: stepId, name: label, ok: err === undefined, duration_ms: Date.now() - t0, error: err !== undefined ? truncate(String(err), 2000) : undefined },
+        { step_id: stepId, name: label, ok: err === undefined, duration_ms: Date.now() - t0, error: isCancelled(err) ? "cancelled" : err !== undefined ? truncate(String(err), 2000) : undefined },
         { parentId: parent },
       ),
     fn,
@@ -478,7 +478,7 @@ export function agent<T>(options: AgentOptions | string, fn: () => T): T {
       } else setStatus("done");
       emit(
         "step.finished",
-        { step_id: stepId, name: info.name, ok: err === undefined, duration_ms: Date.now() - t0, error: err !== undefined ? truncate(String(err), 2000) : undefined },
+        { step_id: stepId, name: info.name, ok: err === undefined, duration_ms: Date.now() - t0, error: isCancelled(err) ? "cancelled" : err !== undefined ? truncate(String(err), 2000) : undefined },
         { parentId: parent },
       );
     },
