@@ -117,3 +117,59 @@ def test_state_cleaned_up(collector: FakeCollector) -> None:
     run_desk()
     p = oa.get_processor()
     assert p._nodes == {} and p._runs == {}
+
+
+# ---------------- pause / cancel ----------------
+
+
+def _on_billing(action: str) -> Any:
+    def auto(e: dict[str, Any]) -> str | None:
+        return action if e["type"] == "agent.registered" and e["agent_id"] == "billing" else None
+
+    return auto
+
+
+def _flush_on_second_reply(n: int) -> None:
+    if n == 1:  # billing's first model call: the control arrives with this flush
+        assert agentspace.flush()
+
+
+def test_cancel_stops_run_at_next_span(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    init_fast(collector.url)
+    collector.auto_control = _on_billing("cancelled")
+    with pytest.raises(agentspace.Cancelled):
+        asyncio.run(Runner.run(build_support_desk(_flush_on_second_reply), "Is invoice 42 paid?"))
+    agentspace.flush()
+    ev = collector.events
+    assert_valid_events(validator, ev)
+    assert not [e for e in ev if e["type"] in ("error", "tool.call")]  # lookup never ran
+    assert [e["data"]["status"] for e in ev if e["type"] == "run.finished"] == ["cancelled"]
+    assert oa.get_processor()._runs == {}
+
+
+def test_control_hooks_pause_until_resumed(collector: FakeCollector) -> None:
+    import threading
+
+    init_fast(collector.url)
+    collector.auto_control = _on_billing("paused")
+
+    def flush_and_resume(n: int) -> None:
+        if n == 1:
+            assert agentspace.flush()
+            collector.auto_control = None
+            run_id = collector.events[0]["run_id"]
+            threading.Timer(0.3, lambda: collector.controls.pop(run_id)).start()
+
+    result = asyncio.run(
+        Runner.run(
+            build_support_desk(flush_and_resume), "Is invoice 42 paid?", hooks=oa.ControlHooks()
+        )
+    )
+    assert result.final_output.startswith("Invoice 42")
+    agentspace.flush()
+    ev = collector.events
+    blocked = [e for e in ev if e["type"] == "agent.status" and e["data"]["status"] == "blocked"]
+    assert blocked and blocked[0]["agent_id"] == "billing"
+    assert [e["data"]["status"] for e in ev if e["type"] == "run.finished"] == ["ok"]

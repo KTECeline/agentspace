@@ -272,6 +272,20 @@ def _cancelled(client: Client, rid: str, who: dict[str, Any] | None = None) -> b
     return False
 
 
+def raise_if_cancelled(
+    run_id: str, agent_id: str | None = None, team_id: str | None = None
+) -> None:
+    """Cancel-only safe point for callbacks that must never block (e.g. tracing hooks)."""
+    from agentspace import _api
+
+    client = _api.get_client()
+    if client is None or client.transport is None:
+        return
+    if client.controls.get(run_id) == "cancelled":
+        who = {"run_id": run_id, "agent_id": agent_id, "team_id": team_id} if agent_id else None
+        _cancelled(client, run_id, who)
+
+
 def _check_cancel_while_waiting(client: Client, run_id: str | None) -> None:
     rid = _run_id(client, run_id)
     if rid and client.controls.get(rid) == "cancelled" and client.config.cancel_mode == "raise":

@@ -41,11 +41,18 @@ def call(name: str, args: dict[str, Any], call_id: str) -> ResponseFunctionToolC
 class ScriptedModel(Model):
     """Returns canned replies in order and records a generation span, like the real models."""
 
-    def __init__(self, replies: list[tuple[list[Any], int, int]], name: str = "scripted-fake"):
+    def __init__(
+        self,
+        replies: list[tuple[list[Any], int, int]],
+        name: str = "scripted-fake",
+        on_reply: Any = None,
+    ):
         self.replies = list(replies)
         self.name = name
+        self.on_reply = on_reply or (lambda n: None)
 
     async def get_response(self, *args: Any, **kwargs: Any) -> ModelResponse:
+        self.on_reply(3 - len(self.replies))
         output, tin, tout = self.replies.pop(0)
         with generation_span(model=self.name, usage={"input_tokens": tin, "output_tokens": tout}):
             pass
@@ -68,13 +75,15 @@ def refund(invoice_id: str) -> str:
     raise RuntimeError("refunds are disabled")
 
 
-def build_support_desk() -> Agent[Any]:
+def build_support_desk(on_reply: Any = None) -> Agent[Any]:
+    """``on_reply(n)`` runs before the model's n-th reply (0-based); tests use it to flush."""
     model = ScriptedModel(
-        [
+        on_reply=on_reply,
+        replies=[
             ([call("transfer_to_billing", {}, "c1")], 150, 12),
             ([call("lookup_invoice", {"invoice_id": "42"}, "c2")], 380, 24),
             ([say("Invoice 42 was paid on 1 September.")], 520, 40),
-        ]
+        ],
     )
     billing = Agent(
         name="Billing",

@@ -14,6 +14,11 @@ Mapping:
 - ``custom`` / ``guardrail`` span -> step (kind=custom)
 - turn / task / other spans  -> context only (children inherit the agent)
 
+Controls: an operator's cancel raises ``agentspace.Cancelled`` at the next agent, model or
+tool span start (the run finishes as "cancelled"). Pausing needs an async hook, because the
+SDK runs on an event loop: pass ``hooks=agentspace.adapters.openai_agents.ControlHooks()`` to
+``Runner.run`` and runs pause before the next agent, model or tool call.
+
 The team (office room) defaults to the trace's workflow name. Override it with trace metadata
 ``{"agentspace_team": "..."}`` (``RunConfig(trace_metadata=...)``).
 """
@@ -25,11 +30,13 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agents.tracing import TracingProcessor
+from agents import RunHooks
+from agents.tracing import TracingProcessor, get_current_trace
 
 from agentspace import _api
 from agentspace._client import AgentInfo
 from agentspace._context import current_run
+from agentspace._control import Cancelled, adapter_acheckpoint, raise_if_cancelled
 from agentspace._log import internal_error
 from agentspace._util import slugify, truncate
 
@@ -141,10 +148,11 @@ class AgentSpaceTracingProcessor(TracingProcessor):
             client = self._client()
             if run is None or client is None:
                 return
+            cancelled = client.controls.get(run.run_id) == "cancelled"
             for agent_id in sorted(run.agents):
                 client.emit(
                     "agent.status",
-                    {"status": "done"},
+                    {"status": "done", "detail": "cancelled by an operator" if cancelled else None},
                     run_id=run.run_id,
                     agent_id=agent_id,
                     team_id=run.team_id,
@@ -153,7 +161,10 @@ class AgentSpaceTracingProcessor(TracingProcessor):
             if run.owned:
                 client.emit(
                     "run.finished",
-                    {"status": "ok", "duration_ms": round((time.monotonic() - run.t0) * 1000, 1)},
+                    {
+                        "status": "cancelled" if cancelled else "ok",
+                        "duration_ms": round((time.monotonic() - run.t0) * 1000, 1),
+                    },
                     run_id=run.run_id,
                     agent_id=None,
                     team_id=None,
@@ -173,6 +184,10 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                 return
             data = span.span_data
             kind = data.type
+            if kind in ("agent", "generation", "response", "function"):
+                agent_id = slugify(str(data.name)) if kind == "agent" else parent.agent_id
+                team = parent.run.team_id if agent_id else None
+                raise_if_cancelled(parent.run.run_id, agent_id, team)  # may raise Cancelled
             node = _Node(
                 parent.run,
                 parent.agent_id,
@@ -384,6 +399,35 @@ def _int(v: Any) -> int | None:
         return None
 
 
+class ControlHooks(RunHooks[Any]):
+    """Run hooks that make agent, model and tool starts pause/cancel safe points.
+
+    ``Runner.run(agent, input, hooks=ControlHooks())``. Pausing waits in a thread, so the
+    event loop keeps running. Subclass it to add your own hooks (call ``super()``).
+    """
+
+    async def on_agent_start(self, context: Any, agent: Any) -> None:
+        await self._checkpoint(agent)
+
+    async def on_llm_start(
+        self, context: Any, agent: Any, system_prompt: Any, input_items: Any
+    ) -> None:
+        await self._checkpoint(agent)
+
+    async def on_tool_start(self, context: Any, agent: Any, tool: Any) -> None:
+        await self._checkpoint(agent)
+
+    @staticmethod
+    async def _checkpoint(agent: Any) -> None:
+        trace = get_current_trace()
+        run = get_processor()._runs.get(trace.trace_id) if trace else None
+        run_id = run.run_id if run else current_run.get()
+        if not run_id:
+            return
+        agent_id = slugify(str(getattr(agent, "name", ""))) or None
+        await adapter_acheckpoint(run_id, agent_id, run.team_id if run else None)
+
+
 _processor: AgentSpaceTracingProcessor | None = None
 
 
@@ -407,4 +451,10 @@ def get_processor() -> AgentSpaceTracingProcessor:
     return _processor
 
 
-__all__ = ["AgentSpaceTracingProcessor", "get_processor", "instrument"]
+__all__ = [
+    "AgentSpaceTracingProcessor",
+    "Cancelled",
+    "ControlHooks",
+    "get_processor",
+    "instrument",
+]
