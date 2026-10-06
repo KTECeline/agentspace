@@ -108,7 +108,7 @@ export class Projector {
   }
 }
 
-type Usage = Pick<RunState, "tokens_in" | "tokens_out" | "cost_usd" | "cost_estimated_usd" | "unpriced_calls">;
+export type Usage = Pick<RunState, "tokens_in" | "tokens_out" | "cost_usd" | "cost_estimated_usd" | "unpriced_calls">;
 
 /**
  * What an event adds to its agent's and run's totals. Only `llm.call` counts (the totals rule).
