@@ -1,5 +1,7 @@
 # Recording the README GIF and the launch video
 
+> **To be rewritten in Phase 6.5 (D-042).** The new story is a failure → locate → inspect → compare → pause → reject → replay. Don't record from this version.
+
 Two pieces: a **60-second GIF** for the top of the README (no sound, loops), and a **2-minute video** with narration for the launch posts. Both come from the same setup and shots.
 
 ## Setup (10 minutes, once)

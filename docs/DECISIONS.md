@@ -322,3 +322,14 @@ What broke and what changed:
 - **Verified:** `scripts/check_public_demo.sh <url>` checks the redirects, the pages, the CSP, that write and API routes don't exist, and that the page, its scripts and the recordings contain no keys or personal data. Locally (demo-mode production build) it passes. In the browser, `fetch` and `WebSocket` to any other origin fire `securitypolicyviolation` events and fail, while same-origin recordings load.
 
 **Why:** a public URL mustn't become a way to reach anyone's collector, and it mustn't depend on one setting being right: each layer holds on its own.
+
+## D-042 · Phase 6: from live office to debugger and oversight (2026-10-06)
+**Decision:** AgentSpace is repositioned as a tool to **debug, observe and control** multi-agent systems. The 3D office stays, as the spatial view where incidents appear. Phase 6 adds a run inspector, run comparison, deterministic detectors, an oversight policy and a failure-story demo (see PROGRESS.md), and the launch waits for it.
+- **Detectors are deterministic and run without an LLM.** Repeats, loops and outliers against a per-agent baseline. The collector doesn't call an LLM, and prompts and outputs stay off by default, so automatic "why did it fail" explanations are out of scope. The inspector gives the human what they need to work that out.
+- **History can only escalate, never relax.** The policy is human-written per-tool rules (allow / review / block). Anomaly checks can add a pause or an approval; nothing learned can skip one. Approvals still fail closed (D-033).
+- **Escalations carry evidence** (the baseline against the current run), so a human reviews an exception instead of rubber-stamping a routine prompt.
+- **No confidence scores:** LLMs don't produce calibrated ones, and showing a number would suggest they do.
+- **No argument editing on approval for now:** only the Claude Agent SDK's PreToolUse hook can rewrite tool input through an official API; the other adapters would need monkey-patching.
+- **Integrity analysis stays out:** detectors get a small interface, so it could become one later without changing the core.
+
+**Why:** the first five phases built a solid pipeline, but the user-facing loop ended at "watch it happen". Being useful when a run goes wrong is the gap, and approving every risky action trains people to approve on reflex (alert fatigue), which makes oversight weaker as volume grows.

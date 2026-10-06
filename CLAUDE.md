@@ -2,6 +2,7 @@
 
 AgentSpace: an open-source, framework-agnostic live office for AI agent teams.
 Full brief: `docs/BRIEF.md`. Status: `docs/PROGRESS.md`. Why things are the way they are: `docs/DECISIONS.md` (D-NNN).
+Current phase: **6, debug and oversee** (D-042): inspector, run comparison, deterministic detectors, escalate-only oversight policy, failure-story demo.
 
 ## Working agreement
 - One phase at a time: propose a plan, wait for OK, build, then stop with tests passing, docs updated and a demo command.

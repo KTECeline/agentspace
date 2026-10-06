@@ -2,6 +2,8 @@
 
 Everything needed to take AgentSpace public: a checklist in order, draft posts, and good first issues to open on day one. Nothing here has been posted, published or deployed.
 
+> **On hold for Phase 6 (2026-10-06, D-042).** The launch waits until the debug-and-oversee loop works, because the GIF, the video and the posts should show it. The checklist below still applies; items 5 and the draft posts get reworked in Phase 6.5.
+
 ## Pre-launch checklist
 
 Do these in order. The ones marked **(you)** need your accounts or a decision.
@@ -17,7 +19,7 @@ Do these in order. The ones marked **(you)** need your accounts or a decision.
    Then `git config user.email <id>+KTECeline@users.noreply.github.com` for this repo, and turn on GitHub's "Block command line pushes that expose my email".
 3. [ ] **(you)** Replace `CONDUCT_CONTACT` in `CODE_OF_CONDUCT.md` with the address reports should go to.
 4. [ ] Re-run the secret scan: `gitleaks git . --redact` (CI also runs it on every push). It must report no leaks.
-5. [ ] **(you)** Record the GIF and the two stills ([video.md](launch/video.md)), and put the GIF at the top of the README.
+5. [ ] **(you, after Phase 6.5)** Record the GIF and the two stills ([video.md](launch/video.md)), and put the GIF at the top of the README.
 6. [ ] **(you)** Run the UI benchmark in a focused window (`/demo?stress=50&rate=100&bench=20` on a production build) and fill in the row in [bench/ui_load.md](../bench/ui_load.md).
 
 **Repository settings (right after it's public)**

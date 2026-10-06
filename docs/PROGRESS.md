@@ -247,3 +247,23 @@ CI has 15 jobs, including the secret scan and the Docker build.
 ### Known gaps
 - The Postgres store is still deferred.
 - The OTLP port 4318 and the label glitch while the 3D office loads are good-first-issue drafts.
+
+## Phase 6: Debug and oversee 🚧 (started 2026-10-06)
+
+Direction approved 2026-10-06 (D-042): reposition from "a live office for agent teams" to **"debug, observe and control multi-agent systems"**. The office stays as the place incidents show up. The goal is a working loop: something fails → find where → inspect it → compare it with a good run → pause the next one before it repeats → replay. Launch waits for this phase, because the GIF and the video should show that loop.
+
+**Done-check (planned):** a scripted failure scenario runs end to end, both live and as a `/demo` recording. A detector flags the bad run, the inspector shows the step where it went wrong, the comparison against a good run shows what changed, and an oversight policy pauses the next run with evidence before the risky tool runs. `make demo-check` covers the new routes.
+
+- [ ] **6.1 Run inspector:** a trace tree from `parent_id` (steps from `step.started`/`step.finished`, tools paired by `call_id`), linked both ways with the replay scrubber. Selecting a node shows timing, tokens, cost, model, errors, and inputs/outputs when content capture is on.
+- [ ] **6.2 Run comparison:** pick two runs and see the differences in agent path, tool counts, model, latency, tokens and cost, plus the first point where they diverge.
+- [ ] **6.3 Detectors:** pure, deterministic functions in the collector, checked against each agent's baseline from the stored stats: identical tool calls repeated, error and retry loops, and tool-call/token/cost outliers. Findings are events, so they appear live, as replay markers and as an incident at the agent's desk. Spec addition: an argument hash on `tool.call`, computed in the SDKs without storing the arguments.
+- [ ] **6.4 Oversight policy:** human-written per-tool rules (allow / review / block) plus "pause on anomaly". Anomalies can only add escalations, never remove them. Approval cards carry the evidence ("normally 8 tool calls, this run 31").
+- [ ] **6.5 Demo and story:** one scripted failure scenario (fail → locate → inspect → compare → pause → reject → replay) as an example and a `/demo` recording; rewrite `docs/launch/video.md`, the README tagline and the docs landing page.
+
+### Out of scope for this phase (D-042)
+- LLM-written root-cause explanations (they need full content and an LLM inside the collector).
+- "Confidence" scores on approvals.
+- Editing tool arguments before approving ("Modify"). Only the Claude Agent SDK hook supports it; it may come later for that adapter.
+- Learned auto-approval based on history.
+- The intent/behaviour integrity module (it stays a separate project; 6.3 only leaves a detector interface it could plug into).
+- The Postgres store (still blocked by the npm TLS intercept).
