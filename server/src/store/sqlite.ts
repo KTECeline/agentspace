@@ -70,6 +70,7 @@ export class SqliteStore implements Store {
         cost_usd       REAL NOT NULL DEFAULT 0,
         cost_estimated_usd REAL NOT NULL DEFAULT 0,
         unpriced_calls INTEGER NOT NULL DEFAULT 0,
+        findings    INTEGER NOT NULL DEFAULT 0,
         model          TEXT,
         PRIMARY KEY (workspace, agent_id)
       );
@@ -89,6 +90,7 @@ export class SqliteStore implements Store {
         cost_usd    REAL NOT NULL DEFAULT 0,
         cost_estimated_usd REAL NOT NULL DEFAULT 0,
         unpriced_calls INTEGER NOT NULL DEFAULT 0,
+        findings    INTEGER NOT NULL DEFAULT 0,
         control     TEXT NOT NULL DEFAULT 'running',
         updated_at  INTEGER NOT NULL,
         PRIMARY KEY (workspace, run_id)
@@ -114,7 +116,7 @@ export class SqliteStore implements Store {
       );
       CREATE INDEX IF NOT EXISTS approvals_status ON approvals (workspace, status, created_at);
     `);
-    // Databases created before run controls (4a) and cost sources (D-037) existed.
+    // Databases created before run controls (4a), cost sources (D-037) and findings (D-044) existed.
     const addColumn = (table: string, column: string, type: string) => {
       const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
       if (!cols.some((c) => c.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
@@ -123,6 +125,7 @@ export class SqliteStore implements Store {
     for (const table of ["agents", "runs"]) {
       addColumn(table, "cost_estimated_usd", "REAL NOT NULL DEFAULT 0");
       addColumn(table, "unpriced_calls", "INTEGER NOT NULL DEFAULT 0");
+      addColumn(table, "findings", "INTEGER NOT NULL DEFAULT 0");
     }
   }
 
@@ -143,6 +146,7 @@ export class SqliteStore implements Store {
       ),
       touchAgent: db.prepare(
         `UPDATE agents SET last_event_at = @ts, current_run_id = @run_id, team_id = COALESCE(@team_id, team_id),
+           findings = (CASE WHEN current_run_id IS @run_id THEN findings ELSE 0 END) + @findings,
            last_summary = COALESCE(@summary, last_summary), model = COALESCE(@model, model),
            tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd,
            cost_estimated_usd = cost_estimated_usd + @cost_estimated_usd, unpriced_calls = unpriced_calls + @unpriced_calls
@@ -150,11 +154,12 @@ export class SqliteStore implements Store {
       ),
       setAgentStatus: db.prepare(`UPDATE agents SET status = @status, status_detail = @detail WHERE workspace = @workspace AND agent_id = @agent_id`),
       ensureRun: db.prepare(
-        `INSERT INTO runs (workspace, run_id, started_at, updated_at, event_count, tokens_in, tokens_out, cost_usd, cost_estimated_usd, unpriced_calls)
-         VALUES (@workspace, @run_id, @ts, @now, 1, @tokens_in, @tokens_out, @cost_usd, @cost_estimated_usd, @unpriced_calls)
+        `INSERT INTO runs (workspace, run_id, started_at, updated_at, event_count, tokens_in, tokens_out, cost_usd, cost_estimated_usd, unpriced_calls, findings)
+         VALUES (@workspace, @run_id, @ts, @now, 1, @tokens_in, @tokens_out, @cost_usd, @cost_estimated_usd, @unpriced_calls, @findings)
          ON CONFLICT (workspace, run_id) DO UPDATE SET event_count = event_count + 1, updated_at = @now,
            tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd,
-           cost_estimated_usd = cost_estimated_usd + @cost_estimated_usd, unpriced_calls = unpriced_calls + @unpriced_calls`,
+           cost_estimated_usd = cost_estimated_usd + @cost_estimated_usd, unpriced_calls = unpriced_calls + @unpriced_calls,
+           findings = findings + @findings`,
       ),
       startRun: db.prepare(
         `UPDATE runs SET name = COALESCE(@name, name), framework = COALESCE(@framework, framework), started_at = @ts, status = 'running'
@@ -248,7 +253,7 @@ export class SqliteStore implements Store {
     const s = this.s;
     const usage = usageOf(ev);
     const run = { workspace: ev.workspace, run_id: ev.run_id };
-    s.ensureRun.run({ ...run, ts: ev.ts, now, ...usage });
+    s.ensureRun.run({ ...run, ts: ev.ts, now, ...usage, findings: ev.type === "anomaly.detected" ? 1 : 0 });
 
     switch (ev.type) {
       case "run.started":
@@ -304,6 +309,7 @@ export class SqliteStore implements Store {
       summary: ev.summary ?? null,
       model: ev.type === "llm.call" ? (ev.model ?? null) : null,
       ...usage,
+      findings: ev.type === "anomaly.detected" ? 1 : 0,
     });
   }
 

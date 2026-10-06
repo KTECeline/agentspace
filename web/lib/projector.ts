@@ -16,6 +16,7 @@ export class Projector {
     this.clock += 1;
     const isLlm = ev.type === "llm.call";
     const u = usageOf(ev);
+    const finding = ev.type === "anomaly.detected" ? 1 : 0;
 
     // --- run ---
     const rkey = `${ev.workspace}\u0000${ev.run_id}`;
@@ -33,12 +34,14 @@ export class Projector {
         event_count: 1,
         ...u,
         control: "running",
+        findings: finding,
       };
     } else {
       run = {
         ...run,
         event_count: run.event_count + 1,
         ...add(run, u),
+        findings: run.findings + finding,
       };
     }
     if (ev.type === "run.started") {
@@ -74,6 +77,7 @@ export class Projector {
       cost_estimated_usd: 0,
       unpriced_calls: 0,
       model: null,
+      findings: 0,
     };
     if (ev.type === "agent.registered") {
       agent = { ...agent, team_id: ev.team_id, name: ev.data.name, role: ev.data.role ?? null, framework: ev.data.framework ?? null };
@@ -82,6 +86,8 @@ export class Projector {
     }
     agent = {
       ...agent,
+      // Findings count for the agent's current run only (the collector does the same).
+      findings: (agent.current_run_id === ev.run_id ? agent.findings : 0) + finding,
       last_event_at: ev.ts,
       current_run_id: ev.run_id,
       team_id: ev.team_id ?? agent.team_id,

@@ -21,6 +21,7 @@ const agent = (id: string, team: string | null, name = id): AgentState => ({
   cost_estimated_usd: 0,
   unpriced_calls: 0,
   model: null,
+  findings: 0,
 });
 
 const event = (seq: number, extra: Partial<StoredEvent> = {}): StoredEvent =>

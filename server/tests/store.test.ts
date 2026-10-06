@@ -202,7 +202,7 @@ describe.each(backends)("%s store", (_name, make) => {
 });
 
 describe("sqlite migrations", () => {
-  it("adds the cost columns to a database created before D-037", async () => {
+  it("adds the cost (D-037) and findings (D-044) columns to an older database", async () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -212,12 +212,13 @@ describe("sqlite migrations", () => {
     await first.insert([ev({ type: "llm.call", agent_id: "a", tokens_in: 5, cost_usd: 0.1, data: {} } as never)]);
     await first.close();
     const raw = new Database(path);
-    for (const t of ["agents", "runs"]) for (const c of ["cost_estimated_usd", "unpriced_calls"]) raw.exec(`ALTER TABLE ${t} DROP COLUMN ${c}`);
+    for (const t of ["agents", "runs"]) for (const c of ["cost_estimated_usd", "unpriced_calls", "findings"]) raw.exec(`ALTER TABLE ${t} DROP COLUMN ${c}`);
     raw.close();
 
     const store = new SqliteStore(path);
     await store.insert([ev({ type: "llm.call", agent_id: "a", tokens_in: 5, cost_usd: 0.2, cost_source: "estimated", data: {} } as never)]);
-    expect((await store.agents("default"))[0]).toMatchObject({ cost_usd: 0.1 + 0.2, cost_estimated_usd: 0.2, unpriced_calls: 0 });
+    expect((await store.agents("default"))[0]).toMatchObject({ cost_usd: 0.1 + 0.2, cost_estimated_usd: 0.2, unpriced_calls: 0, findings: 0 });
+    expect((await store.runs("default"))[0]).toMatchObject({ findings: 0 });
     await store.close();
   });
 });

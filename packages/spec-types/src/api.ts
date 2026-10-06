@@ -29,6 +29,8 @@ export interface AgentState {
   /** `llm.call` events with tokens whose model has no price (so they add $0). */
   unpriced_calls: number;
   model: string | null;
+  /** `anomaly.detected` events about this agent in its current run (D-044). */
+  findings: number;
 }
 
 export type RunStatus = "running" | "ok" | "error" | "cancelled";
@@ -52,6 +54,8 @@ export interface RunState {
   cost_estimated_usd: number;
   unpriced_calls: number;
   control: RunControl;
+  /** `anomaly.detected` events in this run (D-044). */
+  findings: number;
 }
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "timeout";

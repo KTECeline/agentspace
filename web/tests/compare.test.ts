@@ -111,6 +111,7 @@ describe("pickBaseline", () => {
     cost_estimated_usd: 0,
     unpriced_calls: 0,
     control: "running",
+    findings: 0,
   });
 
   it("takes the latest successful run of the same workflow that started before the target", () => {
