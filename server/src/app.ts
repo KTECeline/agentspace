@@ -19,6 +19,7 @@ import type { Config } from "./config.js";
 import { Hub } from "./hub.js";
 import { OtlpAssembler } from "./otlp/assembler.js";
 import { protobufToJson, spansFromJson } from "./otlp/decode.js";
+import { DetectorEngine } from "./detect/engine.js";
 import { createStore, type Store } from "./store/index.js";
 import type { ControlAction, InsertResult } from "./store/types.js";
 import { loadPricer } from "./pricing/index.js";
@@ -41,6 +42,7 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
   const auth = new Auth(config);
   const pricer = loadPricer(config.pricesFile);
   const hub = new Hub();
+  const detectors = new DetectorEngine(db, config.detectors, { warn: (obj, msg) => app.log.warn(obj, msg) });
   const waiters = new EventEmitter();
   waiters.setMaxListeners(0);
   const app = Fastify({ logger: logger ? { level: config.logLevel } : false, bodyLimit: config.bodyLimit });
@@ -78,7 +80,19 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
     }
     const changes = await db.insert(valid);
     publish(changes);
+    await detect(changes.inserted);
     return { accepted: changes.inserted.length, duplicates: changes.duplicates, rejected: events.length - valid.length };
+  }
+
+  /** Run the detectors over newly stored events and store their findings. Never fails an ingest. */
+  async function detect(inserted: StoredEvent[]): Promise<void> {
+    if (!detectors.enabled || !inserted.length) return;
+    try {
+      const findings = await detectors.observe(inserted);
+      if (findings.length) publish(await db.insert(findings));
+    } catch (err) {
+      app.log.warn({ err }, "detectors failed");
+    }
   }
 
   function waitFor(key: string, seconds: number): Promise<void> {
@@ -175,6 +189,7 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
 
     const changes = await db.insert(valid);
     publish(changes);
+    await detect(changes.inserted);
 
     // Tell the SDK about runs in this batch that an operator paused or cancelled.
     const controls: Record<string, RunControl> = {};

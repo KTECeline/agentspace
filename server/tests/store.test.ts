@@ -107,6 +107,37 @@ describe.each(backends)("%s store", (_name, make) => {
     expect((await store.stats("other", { since: null, until: null })).totals.calls).toBe(0);
   });
 
+  it("returns baseline rows: the newest successful runs of a workflow, with each agent's tool calls (D-044)", async () => {
+    const run = (id: string, name: string, minute: number, status: "ok" | "error", tools: Record<string, number>) => [
+      ev({ type: "run.started", run_id: id, ts: `2026-10-06T10:${String(minute).padStart(2, "0")}:00Z`, data: { name } }),
+      ...Object.entries(tools).flatMap(([agent, n]) => [
+        ev({ type: "agent.status", run_id: id, agent_id: agent, data: { status: "thinking" } }),
+        ...Array.from({ length: n }, (_, i) => ev({ type: "tool.call", run_id: id, agent_id: agent, data: { tool_name: "t", call_id: `${id}${agent}${i}` } })),
+      ]),
+      ev({ type: "llm.call", run_id: id, agent_id: "a", tokens_in: 10 * minute, tokens_out: 1, cost_usd: 0.01, data: {} }),
+      ev({ type: "run.finished", run_id: id, data: { status } }),
+    ];
+    await store.insert([
+      ...run("r1", "ship", 1, "ok", { a: 2 }),
+      ...run("r2", "ship", 2, "error", { a: 9 }),
+      ...run("r3", "ship", 3, "ok", { a: 1, b: 0 }),
+      ...run("r4", "ship", 4, "ok", { a: 3 }),
+      ...run("r5", "triage", 5, "ok", { a: 7 }),
+    ]);
+    const rows = await store.baselineRows("default", "ship", 2);
+    expect(rows.runs).toEqual([
+      { run_id: "r4", tokens: 41, cost_usd: 0.01 },
+      { run_id: "r3", tokens: 31, cost_usd: 0.01 },
+    ]);
+    const agents = [...rows.agents].sort((x, y) => `${x.run_id}${x.agent_id}`.localeCompare(`${y.run_id}${y.agent_id}`));
+    expect(agents).toEqual([
+      { run_id: "r3", agent_id: "a", tool_calls: 1 },
+      { run_id: "r3", agent_id: "b", tool_calls: 0 },
+      { run_id: "r4", agent_id: "a", tool_calls: 3 },
+    ]);
+    expect(await store.baselineRows("default", "nothing", 5)).toEqual({ runs: [], agents: [] });
+  });
+
   it("inserts idempotently and projects agents and runs", async () => {
     const batch = [ev({ type: "run.started", data: { name: "r" } }), ev({ type: "agent.status", agent_id: "a", data: { status: "thinking" } })];
     const first = await store.insert(batch);

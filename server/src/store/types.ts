@@ -8,6 +8,7 @@ import type {
   StatsResponse,
   StoredEvent,
 } from "@agentspace/spec-types";
+import type { BaselineRows } from "../detect/baseline.js";
 import type { StatsWindow } from "./stats.js";
 
 export interface InsertResult {
@@ -53,6 +54,9 @@ export interface Store {
   /** Dashboard aggregates for events with since <= ts < until. Build them with `computeStats`. */
   stats(workspace: string, window: StatsWindow): Promise<StatsResponse>;
   runEvents(workspace: string, runId: string, after?: number, limit?: number): Promise<StoredEvent[]>;
+  /** Detector baselines (D-044): the last `limit` successful runs named `name` (newest first), and each
+   * agent's tool calls in them. Build the baseline with `computeBaseline`. */
+  baselineRows(workspace: string, name: string, limit: number): Promise<BaselineRows>;
   recentEvents(workspace: string, limit?: number): Promise<StoredEvent[]>;
   workspaces(): Promise<{ workspace: string; agents: number }[]>;
 

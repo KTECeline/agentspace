@@ -14,6 +14,7 @@ import type {
   StoredEvent,
 } from "@agentspace/spec-types";
 import { computeStats, type ErrorRow, type LlmRow, type StatsWindow } from "./stats.js";
+import type { BaselineRows } from "../detect/baseline.js";
 import type { ControlAction, ControlOutcome, InsertResult, ResolveOutcome, Store } from "./types.js";
 
 /**
@@ -190,6 +191,9 @@ export class SqliteStore implements Store {
       agent: db.prepare(`SELECT * FROM agents WHERE workspace = ? AND agent_id = ?`),
       runs: db.prepare(`SELECT * FROM runs WHERE workspace = ? ORDER BY updated_at DESC LIMIT ?`),
       run: db.prepare(`SELECT * FROM runs WHERE workspace = ? AND run_id = ?`),
+      baselineRuns: db.prepare(
+        `SELECT run_id, tokens_in + tokens_out AS tokens, cost_usd FROM runs WHERE workspace = ? AND name = ? AND status = 'ok' ORDER BY started_at DESC LIMIT ?`,
+      ),
       runEvents: db.prepare(`SELECT seq, body FROM events WHERE workspace = ? AND run_id = ? AND seq > ? ORDER BY seq LIMIT ?`),
       recentEvents: db.prepare(`SELECT seq, body FROM (SELECT seq, body FROM events WHERE workspace = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`),
       workspaces: db.prepare(`SELECT workspace, COUNT(*) AS agents FROM agents GROUP BY workspace ORDER BY workspace`),
@@ -354,6 +358,19 @@ export class SqliteStore implements Store {
       agents: (s.agents.all(workspace) as AgentRow[]).map(rowToAgent),
     });
   }
+  async baselineRows(workspace: string, name: string, limit: number): Promise<BaselineRows> {
+    const runs = this.s.baselineRuns.all(workspace, name, limit) as BaselineRows["runs"];
+    if (!runs.length) return { runs, agents: [] };
+    const agents = this.db
+      .prepare(
+        `SELECT run_id, agent_id, SUM(type = 'tool.call') AS tool_calls FROM events
+         WHERE workspace = ? AND agent_id IS NOT NULL AND run_id IN (${runs.map(() => "?").join(",")})
+         GROUP BY run_id, agent_id`,
+      )
+      .all(workspace, ...runs.map((r) => r.run_id)) as BaselineRows["agents"];
+    return { runs, agents };
+  }
+
   async run(workspace: string, runId: string) {
     const row = this.s.run.get(workspace, runId) as RunRow | undefined;
     return row && rowToRun(row);

@@ -1,3 +1,6 @@
+import { loadDetectorConfig } from "./detect/engine.js";
+import type { DetectorConfig } from "./detect/types.js";
+
 export interface Config {
   host: string;
   port: number;
@@ -22,6 +25,8 @@ export interface Config {
   publicReadonly: boolean;
   /** Local JSON file with extra or corrected model prices (same shape as GET /v1/pricing). */
   pricesFile: string | null;
+  /** Detector settings (null: off). AGENTSPACE_DETECTORS=off, AGENTSPACE_DETECTORS_FILE (D-044). */
+  detectors: DetectorConfig | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -40,5 +45,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     operatorToken: env.AGENTSPACE_OPERATOR_TOKEN || null,
     publicReadonly: ["1", "true", "yes"].includes((env.AGENTSPACE_PUBLIC_READONLY ?? "").toLowerCase()),
     pricesFile: env.AGENTSPACE_PRICES_FILE || null,
+    detectors: loadDetectorConfig(env),
   };
 }
