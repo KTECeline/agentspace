@@ -14,6 +14,7 @@ export const DOCS_NAV: { group: string; pages: { slug: string; title: string }[]
       { slug: "approvals-and-controls", title: "Approvals, pause and cancel" },
       { slug: "costs", title: "Costs and pricing" },
       { slug: "replay-and-dashboard", title: "Replay and the Costs page" },
+      { slug: "debugging", title: "Debugging a run" },
     ],
   },
   {

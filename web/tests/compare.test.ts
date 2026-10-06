@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { AgentSpaceEvent } from "@agentspace/spec-types";
-import { compareRuns, profileRun } from "../lib/compare";
+import type { AgentSpaceEvent, RunState } from "@agentspace/spec-types";
+import { compareRuns, pickBaseline, profileRun } from "../lib/compare";
 import { buildTimeline } from "../lib/replay";
 
 const recording = buildTimeline(
@@ -91,5 +91,37 @@ describe("compareRuns", () => {
     const d = compareRuns(a, b).divergence!;
     expect(d.a).toBeNull();
     expect(d.b?.sig).toBe("rev tool run_tests");
+  });
+});
+
+describe("pickBaseline", () => {
+  const r = (run_id: string, name: string | null, status: RunState["status"], minute: number): RunState => ({
+    workspace: "default",
+    run_id,
+    name,
+    framework: null,
+    status,
+    started_at: new Date(Date.UTC(2026, 9, 6, 10, minute)).toISOString(),
+    finished_at: null,
+    duration_ms: null,
+    event_count: 1,
+    tokens_in: 0,
+    tokens_out: 0,
+    cost_usd: 0,
+    cost_estimated_usd: 0,
+    unpriced_calls: 0,
+    control: "running",
+  });
+
+  it("takes the latest successful run of the same workflow that started before the target", () => {
+    const target = r("t", "ship", "error", 30);
+    const runs = [r("later", "ship", "ok", 40), target, r("other", "triage", "ok", 25), r("failed", "ship", "error", 20), r("good", "ship", "ok", 10), r("older", "ship", "ok", 5)];
+    expect(pickBaseline(runs, target)?.run_id).toBe("good");
+  });
+
+  it("falls back to a later successful run, and never to another workflow", () => {
+    const target = r("t", "ship", "error", 30);
+    expect(pickBaseline([target, r("later", "ship", "ok", 40)], target)?.run_id).toBe("later");
+    expect(pickBaseline([target, r("other", "triage", "ok", 10)], target)).toBeNull();
   });
 });

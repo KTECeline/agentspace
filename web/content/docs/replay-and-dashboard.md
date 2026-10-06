@@ -8,6 +8,7 @@ Any run the collector has stored can be played back in the office: click **Repla
 - **The scrubber marks the key moments:** errors and failed runs, handoffs, approvals, and pause or cancel. Click a marker, or use **Next error**, **Next handoff** and the arrows, to jump.
 - **The office is exactly as it was** at that moment: statuses, the event log, pending approvals. Agents keep their desks while you scrub.
 - Operator actions are off in a replay: it's history, not a live run.
+- The side panel's **Trace** tab shows the run as a tree, and **Compare** puts it next to a successful run. See [Debugging a run](debugging).
 
 Replay shows up to 50,000 events of a run. The collector keeps events for `AGENTSPACE_RETENTION_DAYS` (default 7).
 

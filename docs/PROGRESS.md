@@ -254,8 +254,20 @@ Direction approved 2026-10-06 (D-042): reposition from "a live office for agent 
 
 **Done-check (planned):** a scripted failure scenario runs end to end, both live and as a `/demo` recording. A detector flags the bad run, the inspector shows the step where it went wrong, the comparison against a good run shows what changed, and an oversight policy pauses the next run with evidence before the risky tool runs. `make demo-check` covers the new routes.
 
-- [ ] **6.1 Run inspector:** a trace tree from `parent_id` (steps from `step.started`/`step.finished`, tools paired by `call_id`), linked both ways with the replay scrubber. Selecting a node shows timing, tokens, cost, model, errors, and inputs/outputs when content capture is on.
-- [ ] **6.2 Run comparison:** pick two runs and see the differences in agent path, tool counts, model, latency, tokens and cost, plus the first point where they diverge.
+- [x] **6.1 Run inspector** (2026-10-06, D-043): a **Trace** tab on `/replay` and `/demo`.
+  - The tree pairs steps, tool calls and approvals, nests by `parent_id`, and places parentless events by time (marked `~`).
+  - It's tied to the scrubber both ways: selecting a row pauses and seeks; while playing, the current row is marked and its parents open.
+  - **First error** jumps to the earliest failure and highlights its path.
+  - Details: timing, tokens, cost (est.), model, error, and captured content (or a note on `capture_content`).
+  - Keyboard: an ARIA tree with arrows, Home/End, Enter. Stored-run replays open on the trace.
+- [x] **6.2 Run comparison** (2026-10-06, D-043): `/compare?run=&base=`.
+  - Default baseline: the latest successful run of the same workflow.
+  - **What changed** (outcome, agent path, metrics with ratios, per-model and per-tool counts), **First difference** (a common prefix over event signatures), full metric and tool tables.
+  - **Open in replay** opens the run paused on that event with its trace row selected (`/replay?event=`).
+  - Linked from replays and the dashboard's runs table. Redirects to `/demo` in public demo mode; `demo_check.sh` and `check_public_demo.sh` cover it.
+  - Docs: `/docs/debugging`.
+
+  Checked by hand in the browser: the dev-team recording's trace (keyboard, the inferred approval, seeking), and a collector seeded with a good and a failing `ship-feature` run (comparison, the deep link into the failed `run_tests`, first-error path). Web tests 62 → 74.
 - [ ] **6.3 Detectors:** pure, deterministic functions in the collector, checked against each agent's baseline from the stored stats: identical tool calls repeated, error and retry loops, and tool-call/token/cost outliers. Findings are events, so they appear live, as replay markers and as an incident at the agent's desk. Spec addition: an argument hash on `tool.call`, computed in the SDKs without storing the arguments.
 - [ ] **6.4 Oversight policy:** human-written per-tool rules (allow / review / block) plus "pause on anomaly". Anomalies can only add escalations, never remove them. Approval cards carry the evidence ("normally 8 tool calls, this run 31").
 - [ ] **6.5 Demo and story:** one scripted failure scenario (fail → locate → inspect → compare → pause → reject → replay) as an example and a `/demo` recording; rewrite `docs/launch/video.md`, the README tagline and the docs landing page.

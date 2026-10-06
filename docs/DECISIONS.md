@@ -333,3 +333,14 @@ What broke and what changed:
 - **Integrity analysis stays out:** detectors get a small interface, so it could become one later without changing the core.
 
 **Why:** the first five phases built a solid pipeline, but the user-facing loop ended at "watch it happen". Being useful when a run goes wrong is the gap, and approving every risky action trains people to approve on reflex (alert fatigue), which makes oversight weaker as volume grows.
+
+## D-043 · Run inspector and comparison are computed in the browser (2026-10-06)
+**Decision:**
+- **Trace** (`web/lib/trace.ts`): a tree built from a run's sorted events. Steps (by `step_id`), tool calls (by `call_id`) and approvals (by `approval_id`) are one node from start to end. Children hang off `parent_id`. An event with no known parent goes under the innermost step or tool call its agent has open at that moment, and is marked `inferred` (the LangGraph adapter emits approvals without a parent). A step with no parent stays top level, because adapters set it when steps nest. Unfinished nodes are `open` and run to the last event. Usage per subtree follows the totals rule (`llm.call` only, `usageOf`).
+- **First error:** the failed node that finished first, then the deepest. That's the cause rather than the step that failed because of it.
+- **Comparison** (`web/lib/compare.ts`): each run is profiled, and its meaningful events are reduced to signatures (agent + kind + step, tool or model name + outcome; no ids, times or content). The first difference is where the two signature sequences stop matching (a common prefix, not an alignment). Failed tool calls and `error` events are separate metrics, because one failure often produces both.
+- **Default baseline:** the latest successful run *with the same name* that started before the target, else a later one. Runs of other workflows are never picked, because comparing them is noise.
+- **No new collector API.** Both views use the existing run and run-events endpoints, so read-only redaction applies unchanged. `/compare` is a collector page: it redirects to `/demo` in public demo mode. `/replay?event=<id>` opens a replay paused on an event, which is how the comparison links into the trace.
+- Live mode has no inspector of its own: the **Replay** button opens one, so a growing tree never costs the office frames.
+
+**Why:** same reasoning as D-040. Runs are thousands of events, so building the tree or a comparison takes milliseconds in the browser, and keeping it pure and client-side means one tested implementation with no backend work for each store. A common-prefix divergence is easy to explain; an alignment (LCS) would hide where behaviour first changed.
