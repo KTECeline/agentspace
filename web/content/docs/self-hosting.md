@@ -25,6 +25,8 @@ Collector data lives in the `agentspace-data` volume. Released images are publis
 | `AGENTSPACE_BODY_LIMIT` | 10 MB | the largest request body |
 | `AGENTSPACE_OTLP_CAPTURE_CONTENT` | `false` | keep prompt and output content from OTLP spans |
 | `AGENTSPACE_OTLP_HOLD_MS` | `10000` | how long a span waits for its parent |
+| `AGENTSPACE_DETECTORS` | on | `off` turns the [detectors](detectors) off |
+| `AGENTSPACE_DETECTORS_FILE` | (none) | JSON that tunes or turns off single detectors ([Detectors](detectors)) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
 `AGENTSPACE_DATABASE_URL=postgres://…` is reserved for the upcoming Postgres store and isn't supported yet.

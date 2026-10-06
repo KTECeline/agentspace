@@ -268,7 +268,15 @@ Direction approved 2026-10-06 (D-042): reposition from "a live office for agent 
   - Docs: `/docs/debugging`.
 
   Checked by hand in the browser: the dev-team recording's trace (keyboard, the inferred approval, seeking), and a collector seeded with a good and a failing `ship-feature` run (comparison, the deep link into the failed `run_tests`, first-error path). Web tests 62 → 74.
-- [ ] **6.3 Detectors:** pure, deterministic functions in the collector, checked against each agent's baseline from the stored stats: identical tool calls repeated, error and retry loops, and tool-call/token/cost outliers. Findings are events, so they appear live, as replay markers and as an incident at the agent's desk. Spec addition: an argument hash on `tool.call`, computed in the SDKs without storing the arguments.
+- [x] **6.3 Detectors** (2026-10-06, D-044).
+  - **Spec:** `tool.call.data.arguments_hash` (keyed per process) and `anomaly.detected`, which the collector rejects from clients.
+  - **SDKs:** `hash_arguments()` / `hashArguments()`, `init(hash_arguments=)`. The four adapters send the hash; the collector hashes OTLP arguments; the Claude Code hook sends none. Cost is bounded (p99 ≤ 0.6 ms worst case, `bench/hash_arguments.py`).
+  - **Collector:** a detector engine with `repeated_tool_call`, `failure_loop`, `handoff_loop`, `tool_call_outlier` and `usage_outlier`. Deterministic finding ids; rebuilt from the store after a restart. Baselines from `Store.baselineRows` + `computeBaseline`. Configured with `AGENTSPACE_DETECTORS` / `AGENTSPACE_DETECTORS_FILE`.
+  - **Projections:** `runs.findings`, and `agents.findings` for the agent's current run (both sides, fixture regenerated, migration).
+  - **UI:** an amber incident badge at the desk (3D and 2D); **Findings in this run** with evidence in the agent panel; replay markers and **Next finding**; finding rows in the trace; a Findings metric in Compare and a column in the dashboard's runs table.
+  - **Docs:** `/docs/detectors`, plus the event-spec, SDK, Claude Code and self-hosting pages.
+
+  Checked by hand in the browser against a collector seeded with 6 good `ship-feature` runs and a failing one. The Reviewer got three findings (repeated `run_tests`, a failure loop, and 6 tool calls against a median of 1, critical), shown at the desk, in the panel, in the replay and trace, and in Compare. Usage stayed under 2× and correctly didn't fire. Tests: collector 60 → 73, web 74 → 78, Python core 63 → 67 (plus hash assertions in three adapter suites), TS SDK 26 → 27.
 - [ ] **6.4 Oversight policy:** human-written per-tool rules (allow / review / block) plus "pause on anomaly". Anomalies can only add escalations, never remove them. Approval cards carry the evidence ("normally 8 tool calls, this run 31").
 - [ ] **6.5 Demo and story:** one scripted failure scenario (fail → locate → inspect → compare → pause → reject → replay) as an example and a `/demo` recording; rewrite `docs/launch/video.md`, the README tagline and the docs landing page.
 

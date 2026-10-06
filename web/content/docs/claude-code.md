@@ -19,6 +19,6 @@ Claude Code waits for some hooks (PreToolUse blocks the tool), so the hook comma
 - always exits 0, even if the collector is down or a payload is unexpected;
 - keeps no state, and posts with a 300 ms timeout.
 
-It sends **metadata only**: tool names, the *name* of a file a tool touched (never its path or contents), subagent types and statuses. It never sends your prompts, commands, search patterns, URLs or file contents.
+It sends **metadata only**: tool names, the *name* of a file a tool touched (never its path or contents), subagent types and statuses. It never sends your prompts, commands, search patterns, URLs or file contents. It sends no arguments hash either (each hook call is a new process, so it couldn't link repeats), so the `repeated_tool_call` [detector](detectors) doesn't apply to Claude Code; the others do.
 
 Settings: `AGENTSPACE_URL` (default `http://localhost:4800`), `AGENTSPACE_WORKSPACE`, `AGENTSPACE_API_KEY`.

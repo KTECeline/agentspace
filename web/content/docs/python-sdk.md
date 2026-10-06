@@ -15,6 +15,7 @@ agentspace.init(
     api_key=None,                  # or AGENTSPACE_API_KEY, when the collector requires keys
     capture_content=False,         # send prompts, outputs and tool arguments?
     redact=None,                   # redact(field, value) -> value, applied to every content value
+    hash_arguments=True,           # keyed hash of tool arguments, for repeat detection (Detectors)
     auto_instrument=True,          # turn on the adapters for installed frameworks
     enabled=None,                  # False (or AGENTSPACE_DISABLED=1) makes every call a no-op
     cancel_mode="raise",           # or "flag": see Approvals, pause and cancel

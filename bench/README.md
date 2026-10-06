@@ -95,6 +95,26 @@ Node has one thread, so batches are serialized and sent on it: flat out, that sh
 
 **Heap with the collector down:** +4.1 MB after 200,000 events (10,000 buffered, 190,000 oldest dropped).
 
+### Argument hashing
+
+Adapters add a keyed hash of each tool call's arguments (`arguments_hash`, D-044). It runs once per tool call, inside the framework's callback, so its cost matters for big arguments. Long strings are reduced to a digest of their first 256K characters and nested structures are read up to 500 values, so the cost has a ceiling. Same machine, 2026-10-06, `bench/hash_arguments.py`:
+
+| Arguments | p50 | p99 |
+|---|---|---|
+| small dict (2 keys) | 3.5 µs | 4.8 µs |
+| 1 KB dict | 2.8 µs | 5.8 µs |
+| JSON string (OpenAI style) | 4.1 µs | 7.8 µs |
+| 1 MB file body | 90 µs | 114 µs |
+| 5 MB string | 96 µs | 160 µs |
+| 40,000-row list | 397 µs | 465 µs |
+| 40,000-key dict | 487 µs | 581 µs |
+
+Every case is under the 1 ms target at p99. `init(hash_arguments=False)` turns it off.
+
+```bash
+cd packages/sdk-python && VIRTUAL_ENV= uv run python ../../bench/hash_arguments.py
+```
+
 ## UI load
 
 See [ui_load.md](ui_load.md).

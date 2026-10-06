@@ -22,9 +22,9 @@ Every event carries these fields:
 
 ## Types
 
-`agent.registered`, `agent.status`, `run.started`, `run.finished`, `run.control`, `step.started`, `step.finished`, `llm.call`, `tool.call`, `tool.result`, `message`, `handoff`, `approval.requested`, `approval.resolved`, `error`. What each one means is in [Concepts](concepts); the schema has every `data` field.
+`agent.registered`, `agent.status`, `run.started`, `run.finished`, `run.control`, `step.started`, `step.finished`, `llm.call`, `tool.call`, `tool.result`, `message`, `handoff`, `approval.requested`, `approval.resolved`, `error`, and `anomaly.detected` (sent only by the collector's [detectors](detectors)). What each one means is in [Concepts](concepts); the schema has every `data` field.
 
-Content fields (`input`, `output`, `arguments`, `result`, `text`, `payload`) are only filled when the SDK runs with `capture_content=True`.
+Content fields (`input`, `output`, `arguments`, `result`, `text`, `payload`) are only filled when the SDK runs with `capture_content=True`. `tool.call` also carries `arguments_hash`, a keyed hash of the arguments that reveals nothing about them; see [Detectors](detectors).
 
 ## OpenTelemetry
 

@@ -28,6 +28,8 @@ const research = agentspace.wrapAgent({ name: "Researcher" }, async (q: string) 
 
 `url`, `workspace`, `apiKey`, `captureContent`, `redact`, `enabled` (or `AGENTSPACE_DISABLED=1`), `cancelMode` (`"raise"` or `"flag"`), and the transport settings `maxQueue`, `maxBatch`, `flushIntervalMs`, `timeoutMs`, `maxContentChars`.
 
+When you emit `tool.call` yourself, add `arguments_hash: agentspace.hashArguments(args)` so the collector can spot repeated calls without seeing the arguments ([Detectors](detectors)).
+
 ## Approvals and controls
 
 ```ts
