@@ -1,5 +1,6 @@
 import type { AgentSpaceEvent, AgentStatus } from "@agentspace/spec-types";
 import type { AttrValue, Attrs, OtlpSpan } from "./decode.js";
+import { hashArguments } from "../hash.js";
 
 /**
  * Turns OTLP spans (OpenTelemetry GenAI semantic conventions) into AgentSpace events.
@@ -220,7 +221,17 @@ export class OtlpAssembler {
       const callId = (str(a["gen_ai.tool.call.id"]) ?? span.spanId).slice(0, 128);
       const ok = span.status.code !== 2;
       if (ctx.agentId) out.push(base("tool-status", "agent.status", span.startMs, ctx, { status: "using_tool", detail: tool }));
-      out.push(base("tool-call", "tool.call", span.startMs, ctx, { tool_name: tool, call_id: callId, arguments: this.content(a["gen_ai.tool.call.arguments"]) }, { summary: `${tool}()` }));
+      const args = a["gen_ai.tool.call.arguments"];
+      out.push(
+        base(
+          "tool-call",
+          "tool.call",
+          span.startMs,
+          ctx,
+          { tool_name: tool, call_id: callId, arguments: this.content(args), arguments_hash: args !== undefined && args !== null ? hashArguments(args) : undefined },
+          { summary: `${tool}()` },
+        ),
+      );
       out.push(
         base("tool-result", "tool.result", span.endMs, ctx, {
           tool_name: tool,

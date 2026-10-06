@@ -48,6 +48,7 @@ def test_session_replay(collector: FakeCollector, validator: Draft202012Validato
         ("support", "mcp__billing__refund"),
     ]
     assert all("arguments" not in e["data"] for e in ev if e["type"] == "tool.call")
+    assert all(len(e["data"]["arguments_hash"]) == 16 for e in ev if e["type"] == "tool.call")
 
     llm = [e for e in ev if e["type"] == "llm.call"]
     assert [

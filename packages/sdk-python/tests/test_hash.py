@@ -39,9 +39,18 @@ def test_never_raises_and_stays_bounded() -> None:
     # default=str falls back to repr, which raises: no hash, no exception.
     assert hash_arguments({"x": Weird()}) is None
     huge = "x" * 5_000_000
+    rows = {"rows": [{"id": i, "v": "abcdefgh"} for i in range(40_000)]}
+    keys = {f"k{i}": i for i in range(40_000)}
     started = time.perf_counter()
-    assert hash_arguments(huge) == hash_arguments(huge + "different after the cap")
-    assert time.perf_counter() - started < 0.1
+    # Beyond the limits, differences don't count: the cost stays bounded.
+    assert hash_arguments(huge) == hash_arguments(huge[:-1] + "y")
+    assert hash_arguments(huge) != hash_arguments(huge + "x")  # the length still counts
+    assert hash_arguments(rows) is not None and hash_arguments(keys) is not None
+    assert time.perf_counter() - started < 0.05
+    # A long string is fully covered up to the limit: a change in the middle is seen.
+    body = "x" * 100_000
+    changed = body[:50_000] + "y" + body[50_001:]
+    assert hash_arguments({"content": body}) != hash_arguments({"content": changed})
 
 
 def test_client_hash_can_be_turned_off() -> None:

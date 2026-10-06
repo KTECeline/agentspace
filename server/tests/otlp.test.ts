@@ -6,7 +6,7 @@ import { OtlpAssembler } from "../src/otlp/assembler.js";
 import { spansFromJson } from "../src/otlp/decode.js";
 import { validateEvent } from "../src/validate.js";
 import { makeApp } from "./helpers.js";
-import { S, TRACE, encodeProtobuf, request } from "./otlpHelpers.js";
+import { S, TRACE, encodeProtobuf, request, span } from "./otlpHelpers.js";
 
 let app: FastifyInstance;
 afterEach(async () => app?.close());
@@ -47,6 +47,27 @@ describe("OtlpAssembler", () => {
     expect(new Set(all.map((e) => e.run_id))).toEqual(new Set([TRACE]));
     expect(all.filter((e) => e.agent_id).every((e) => e.team_id === "research-bot")).toBe(true); // service.name
     expect(all.some((e) => e.type === "agent.status" && e.data.status === "waiting_human")).toBe(true);
+  });
+
+  it("hashes tool arguments without forwarding them, so repeats are visible (D-044)", () => {
+    const toolSpan = (id: string, args: string) =>
+      span({ id, parent: "a000000000000004", name: "execute_tool search", start: 3200, end: 3300, attrs: { "gen_ai.tool.name": "search", "gen_ai.tool.call.arguments": args } });
+    const out = new OtlpAssembler().ingest(
+      spansFromJson(request([S.writer, toolSpan("b000000000000001", '{"q": "x", "n": 1}'), toolSpan("b000000000000002", '{"n":1,"q":"x"}'), toolSpan("b000000000000003", '{"q": "y"}')])),
+      undefined,
+      0,
+    );
+    const calls = out.filter((e) => e.type === "tool.call");
+    expect(calls).toHaveLength(3);
+    for (const c of calls) expect(validateEvent(c).ok).toBe(true);
+    const hashes = calls.map((c) => (c.data as { arguments_hash?: string }).arguments_hash);
+    expect(hashes[0]).toMatch(/^[0-9a-f]{16}$/);
+    expect(hashes[1]).toBe(hashes[0]);
+    expect(hashes[2]).not.toBe(hashes[0]);
+    expect(calls.every((c) => !("arguments" in c.data) || c.data.arguments === undefined)).toBe(true);
+    // A span without arguments has no hash.
+    const plain = new OtlpAssembler().ingest(spansFromJson(request([S.writer, S.tool])), undefined, 0).find((e) => e.type === "tool.call")!;
+    expect((plain.data as { arguments_hash?: string }).arguments_hash).toBeUndefined();
   });
 
   it("does not forward prompt content unless enabled", () => {

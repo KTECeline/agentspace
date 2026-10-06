@@ -153,6 +153,10 @@ class AgentSpaceCrewListener(BaseEventListener):
         client = self._client()
         return client.content(field_name, value) if client else None
 
+    def _args_hash(self, value: Any) -> str | None:
+        client = self._client()
+        return client.args_hash(value) if client else None
+
     def _guard(self, where: str, fn: Any, *args: Any) -> None:
         if self._client() is None:
             return
@@ -457,6 +461,7 @@ class AgentSpaceCrewListener(BaseEventListener):
                 "tool_name": truncate(tool, 256),
                 "call_id": ev.event_id,
                 "arguments": self._content("tool.arguments", getattr(ev, "tool_args", None)),
+                "arguments_hash": self._args_hash(getattr(ev, "tool_args", None)),
             },
             agent_id,
             summary=f"{tool}()",

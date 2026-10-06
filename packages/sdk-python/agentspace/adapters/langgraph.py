@@ -138,6 +138,10 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         client = self._client()
         return client.content(field_name, value) if client else None
 
+    def _args_hash(self, value: Any) -> str | None:
+        client = self._client()
+        return client.args_hash(value) if client else None
+
     # ---------------- chains (graph + nodes) ----------------
 
     def on_chain_start(
@@ -541,6 +545,7 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
                     "arguments": self._content(
                         "tool.arguments", inputs if inputs is not None else input_str
                     ),
+                    "arguments_hash": self._args_hash(inputs if inputs is not None else input_str),
                 },
                 summary=f"{tool_name}()",
             )

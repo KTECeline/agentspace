@@ -204,9 +204,10 @@ class AgentSpaceTracingProcessor(TracingProcessor):
             elif kind == "function":
                 node.name = str(getattr(data, "name", "tool"))
                 self._status(node, "using_tool", node.name)
-                # The SDK fills in the arguments while the span runs. When content capture is on,
-                # tool.call is sent at span end so it can carry them; otherwise it's sent now.
-                if not self._capturing():
+                # The SDK fills in the arguments while the span runs. When they're needed (content
+                # capture, or the arguments hash), tool.call is sent at span end so it can carry
+                # them; otherwise it's sent now.
+                if not self._needs_arguments():
                     self._tool_call(node, span, None)
             elif kind in ("custom", "guardrail") and getattr(data, "name", None) not in (
                 "turn",
@@ -331,7 +332,7 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                         summary=f"handed off to {dst}",
                     )
             elif kind == "function":
-                if self._capturing():
+                if self._needs_arguments():
                     self._tool_call(node, span, getattr(data, "input", None))
                 self._emit(
                     node,
@@ -360,17 +361,22 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                 "tool_name": node.name or "tool",
                 "call_id": span.span_id,
                 "arguments": self._content("tool.arguments", arguments),
+                "arguments_hash": self._args_hash(arguments) if arguments is not None else None,
             },
             summary=f"{node.name}()",
         )
 
-    def _capturing(self) -> bool:
+    def _needs_arguments(self) -> bool:
         client = self._client()
-        return bool(client and client.config.capture_content)
+        return bool(client and (client.config.capture_content or client.config.hash_arguments))
 
     def _content(self, field_name: str, value: Any) -> Any:
         client = self._client()
         return client.content(field_name, value) if client else None
+
+    def _args_hash(self, value: Any) -> str | None:
+        client = self._client()
+        return client.args_hash(value) if client else None
 
     def shutdown(self) -> None:
         pass

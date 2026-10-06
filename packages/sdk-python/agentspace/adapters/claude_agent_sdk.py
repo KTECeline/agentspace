@@ -182,6 +182,10 @@ class ClaudeAgentTracker:
         client = self._client()
         return client.content(field_name, value) if client else None
 
+    def _args_hash(self, value: Any) -> str | None:
+        client = self._client()
+        return client.args_hash(value) if client else None
+
     # ---------------- hooks ----------------
 
     def hooks(self) -> dict[str, list[Any]]:
@@ -331,6 +335,7 @@ class ClaudeAgentTracker:
                 "tool_name": truncate(tool, 256),
                 "call_id": call_id[:128],
                 "arguments": self._content("tool.arguments", tool_input),
+                "arguments_hash": self._args_hash(tool_input),
             },
             agent_id,
             summary=f"{tool}()",

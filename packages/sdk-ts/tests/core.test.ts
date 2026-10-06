@@ -147,7 +147,13 @@ describe("hashArguments", () => {
     expect(hashArguments('{"lines": [1, 2], "path": "cart.py"}')).toBe(a);
     expect(hashArguments({ path: "cart.py", lines: [2, 1] })).not.toBe(a);
     expect(hashArguments(undefined)).toMatch(/^[0-9a-f]{16}$/);
+    // Bounded cost: beyond the limits differences don't count, but a string's length does.
     const huge = "x".repeat(2_000_000);
-    expect(hashArguments(huge)).toBe(hashArguments(`${huge}different after the cap`));
+    expect(hashArguments(huge)).toBe(hashArguments(`${huge.slice(0, -1)}y`));
+    expect(hashArguments(huge)).not.toBe(hashArguments(`${huge}x`));
+    const rows = { rows: Array.from({ length: 40_000 }, (_, id) => ({ id, v: "abcdefgh" })) };
+    const started = performance.now();
+    expect(hashArguments(rows)).toMatch(/^[0-9a-f]{16}$/);
+    expect(performance.now() - started).toBeLessThan(50);
   });
 });

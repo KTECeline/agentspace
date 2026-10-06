@@ -1,46 +1,18 @@
-import { internalError } from "./log.js";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 
 /**
- * Keyed hashes of tool arguments (spec: `tool.call.data.arguments_hash`, DECISIONS D-044), the
- * same scheme as the Python SDK. The key is random per process, so the hash can't be reversed by
- * guessing small values, and equal hashes only mean something within one process (one run).
- * Needs `node:crypto`; elsewhere `hashArguments` returns undefined.
+ * `tool.call.data.arguments_hash` for OTLP spans, the same scheme as the SDKs (D-044): HMAC-SHA256
+ * with a random key per collector process over sorted-key JSON, first 16 hex characters. OTLP
+ * spans carry the arguments only when the app records them; the hash is taken before content is
+ * dropped, so repeats are detectable without storing anything.
  */
+const KEY = randomBytes(32);
 
-interface Crypto {
-  randomBytes(n: number): Uint8Array;
-  createHmac(alg: string, key: Uint8Array): { update(data: string): { digest(enc: "hex"): string } };
-  createHash(alg: string): { update(data: string): { digest(enc: "hex"): string } };
-}
-
-let crypto: Crypto | null | undefined;
-let key: Uint8Array | null = null;
-
-function load(): Crypto | null {
-  if (crypto !== undefined) return crypto;
-  try {
-    const g = globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } };
-    crypto = (g.process?.getBuiltinModule?.("node:crypto") as Crypto | undefined) ?? null;
-    if (crypto) key = crypto.randomBytes(32);
-  } catch {
-    crypto = null;
-  }
-  return crypto;
-}
-
-/**
- * The 16-hex-character keyed hash of a tool call's arguments, or undefined. Object keys are
- * sorted, and a string holding a JSON object or array is parsed first, so key order and
- * pre-serialized arguments don't matter. Never throws.
- */
 export function hashArguments(value: unknown): string | undefined {
   try {
-    const c = load();
-    if (!c || !key) return undefined;
-    const text = canonical(value, (str) => c.createHash("sha256").update(str).digest("hex"));
-    return c.createHmac("sha256", key).update(text).digest("hex").slice(0, 16);
-  } catch (err) {
-    internalError("hashArguments", err);
+    const text = canonical(value, (str) => createHash("sha256").update(str).digest("hex"));
+    return createHmac("sha256", KEY).update(text).digest("hex").slice(0, 16);
+  } catch {
     return undefined;
   }
 }

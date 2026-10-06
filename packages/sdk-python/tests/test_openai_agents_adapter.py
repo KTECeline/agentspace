@@ -86,6 +86,8 @@ def test_details(collector: FakeCollector) -> None:
     assert tool_call["parent_id"] == steps["billing"]
     assert tool_result["data"]["ok"] is True
     assert "arguments" not in tool_call["data"]
+    # No content, but a keyed hash of the arguments, so repeats can be detected (D-044).
+    assert tool_call["data"]["arguments_hash"] == agentspace.hash_arguments({"invoice_id": "42"})
     assert {e["team_id"] for e in ev if e["agent_id"]} == {"support"}
     run = [e for e in ev if e["type"] == "run.finished"]
     assert run and run[0]["data"]["status"] == "ok"

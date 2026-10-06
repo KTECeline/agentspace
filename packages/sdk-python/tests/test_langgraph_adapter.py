@@ -85,6 +85,7 @@ def test_capture_content(collector: FakeCollector) -> None:
     assert first["data"]["input"][0]["content"].startswith("Who should handle")
     tool_call = next(e for e in events if e["type"] == "tool.call")
     assert tool_call["data"]["arguments"] == {"path": "cart.py"}
+    assert tool_call["data"]["arguments_hash"] == agentspace.hash_arguments({"path": "cart.py"})
 
 
 def test_node_error_propagates_and_is_recorded(
