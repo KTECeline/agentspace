@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import {
   ArrowRightLeft,
   ChevronDown,
@@ -13,11 +13,12 @@ import {
   MessageSquare,
   Play,
   Sparkles,
+  TriangleAlert,
   Wrench,
   X,
 } from "lucide-react";
 import type { AgentSpaceEvent } from "@agentspace/spec-types";
-import { clock, formatDuration, formatTokens } from "@/lib/format";
+import { clock, evidenceRows, formatDuration, formatTokens } from "@/lib/format";
 import type { ReplayPlayer } from "@/lib/sources/replay";
 import { buildTrace, nodeAt, pathTo, type Trace, type TraceKind, type TraceNode } from "@/lib/trace";
 import { Cost } from "../Cost";
@@ -32,6 +33,7 @@ const ICON: Record<TraceKind, typeof Wrench> = {
   message: MessageSquare,
   error: CircleAlert,
   control: CirclePause,
+  finding: TriangleAlert,
 };
 
 const KIND_LABEL: Record<TraceKind, string> = {
@@ -44,11 +46,13 @@ const KIND_LABEL: Record<TraceKind, string> = {
   message: "Message",
   error: "Error",
   control: "Run control",
+  finding: "Finding",
 };
 
 /** Status dot tone (data-status): failed, still running, finished fine, or nothing to judge. */
 function tone(n: TraceNode): string | undefined {
   if (n.status === "error") return "error";
+  if (n.kind === "finding") return "using_tool";
   if (n.status === "open") return "thinking";
   if (n.kind === "approval") return "waiting_human";
   if (n.status === "ok") return "done";
@@ -142,6 +146,11 @@ export function TracePanel({ player, names: known }: Props) {
   };
 
   const selectedNode = selected ? trace.byId.get(selected) : undefined;
+
+  // Keep the selected row visible (it may be deep in a long run, or under the details pane).
+  useEffect(() => {
+    if (selected) document.getElementById(rowId(selected))?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   return (
     <section aria-labelledby="trace-title" className="flex max-h-[70vh] min-h-0 flex-1 flex-col rounded-xl border border-border bg-surface lg:max-h-none">
@@ -287,6 +296,12 @@ function TraceRow({ node: n, label, agent, open, active, selected, onErrorPath, 
           ~<span className="sr-only">placed by time</span>
         </span>
       )}
+      {!n.hasError && n.kind !== "finding" && n.findings > 0 && (
+        <span data-status="using_tool" className="shrink-0" title="A detector flagged something under this">
+          <span aria-hidden className="block size-1.5 rounded-full bg-[var(--st-dot)]" />
+          <span className="sr-only">contains a finding</span>
+        </span>
+      )}
       {n.hasError && n.status !== "error" && (
         <span data-status="error" className="shrink-0" title="Something under this failed">
           <span aria-hidden className="block size-1.5 rounded-full bg-[var(--st-dot)]" />
@@ -332,7 +347,7 @@ function NodeDetail({ node: n, events, names, onClose }: { node: TraceNode; even
 
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         {n.agentId && <Field label="Agent">{names[n.agentId] ?? n.agentId}</Field>}
-        <Field label="Status">{n.status === "open" ? "Not finished" : n.status === "error" ? "Failed" : decision ? decision : n.status === "ok" ? "OK" : "—"}</Field>
+        {n.kind !== "finding" && <Field label="Status">{n.status === "open" ? "Not finished" : n.status === "error" ? "Failed" : decision ? decision : n.status === "ok" ? "OK" : "—"}</Field>}
         {first && <Field label="Started">{clock(first.ts)}</Field>}
         {n.durationMs != null && <Field label="Duration">{formatDuration(n.durationMs)}</Field>}
         {n.kind === "llm" && first?.model && <Field label="Model">{first.model}</Field>}
@@ -352,8 +367,20 @@ function NodeDetail({ node: n, events, names, onClose }: { node: TraceNode; even
             {n.toolCalls} tool, {n.llmCalls} model {n.llmCalls === 1 ? "call" : "calls"}
           </Field>
         )}
-        {first?.summary && n.kind !== "message" && <Field label="Summary">{first.summary}</Field>}
+        {first?.summary && n.kind !== "message" && n.kind !== "finding" && <Field label="Summary">{first.summary}</Field>}
       </dl>
+
+      {n.kind === "finding" && first?.type === "anomaly.detected" && (
+        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md bg-surface-2 p-2">
+          <Field label="Detector">{first.data.detector}</Field>
+          <Field label="Severity">{first.data.severity}</Field>
+          {evidenceRows(first.data.evidence).map(([label, value]) => (
+            <Field key={label} label={label}>
+              {value}
+            </Field>
+          ))}
+        </dl>
+      )}
 
       {n.inferred && <p className="mt-2 text-xs text-muted">This event had no parent, so it&apos;s placed by time under the agent&apos;s open step or tool.</p>}
 

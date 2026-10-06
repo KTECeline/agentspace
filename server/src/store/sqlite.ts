@@ -146,11 +146,14 @@ export class SqliteStore implements Store {
       ),
       touchAgent: db.prepare(
         `UPDATE agents SET last_event_at = @ts, current_run_id = @run_id, team_id = COALESCE(@team_id, team_id),
-           findings = (CASE WHEN current_run_id IS @run_id THEN findings ELSE 0 END) + @findings,
+           findings = CASE WHEN current_run_id IS @run_id THEN findings ELSE 0 END,
            last_summary = COALESCE(@summary, last_summary), model = COALESCE(@model, model),
            tokens_in = tokens_in + @tokens_in, tokens_out = tokens_out + @tokens_out, cost_usd = cost_usd + @cost_usd,
            cost_estimated_usd = cost_estimated_usd + @cost_estimated_usd, unpriced_calls = unpriced_calls + @unpriced_calls
          WHERE workspace = @workspace AND agent_id = @agent_id`,
+      ),
+      addAgentFinding: db.prepare(
+        `UPDATE agents SET findings = findings + 1 WHERE workspace = @workspace AND agent_id = @agent_id AND current_run_id IS @run_id`,
       ),
       setAgentStatus: db.prepare(`UPDATE agents SET status = @status, status_detail = @detail WHERE workspace = @workspace AND agent_id = @agent_id`),
       ensureRun: db.prepare(
@@ -296,6 +299,11 @@ export class SqliteStore implements Store {
     if (!ev.agent_id) return;
     const agent = { workspace: ev.workspace, agent_id: ev.agent_id };
     s.ensureAgent.run({ ...agent, team_id: ev.team_id });
+    // A finding is about the agent, not something it did: it only counts toward its current run.
+    if (ev.type === "anomaly.detected") {
+      s.addAgentFinding.run({ ...agent, run_id: ev.run_id });
+      return;
+    }
     if (ev.type === "agent.registered") {
       s.registerAgent.run({ ...agent, team_id: ev.team_id, name: ev.data.name, role: ev.data.role ?? null, framework: ev.data.framework ?? null });
     } else if (ev.type === "agent.status") {
@@ -309,7 +317,6 @@ export class SqliteStore implements Store {
       summary: ev.summary ?? null,
       model: ev.type === "llm.call" ? (ev.model ?? null) : null,
       ...usage,
-      findings: ev.type === "anomaly.detected" ? 1 : 0,
     });
   }
 

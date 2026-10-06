@@ -50,3 +50,23 @@ export function toolCalls(events: StoredEvent[], agentId: string, limit = 12): T
   }
   return [...byId.values()].reverse().slice(0, limit);
 }
+
+export interface FindingItem {
+  id: string;
+  ts: string;
+  detector: string;
+  severity: "info" | "warning" | "critical";
+  message: string;
+  evidence: Record<string, number | string | boolean>;
+}
+
+/** Detector findings about this agent in one run, newest first. */
+export function findingsFor(events: StoredEvent[], agentId: string, runId: string | null): FindingItem[] {
+  const out: FindingItem[] = [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type !== "anomaly.detected" || e.agent_id !== agentId || (runId && e.run_id !== runId)) continue;
+    out.push({ id: e.id, ts: e.ts, detector: e.data.detector, severity: e.data.severity, message: e.data.message, evidence: e.data.evidence ?? {} });
+  }
+  return out;
+}

@@ -1,6 +1,7 @@
 import type { RunStats } from "@agentspace/spec-types";
 import { formatDuration, formatTokens } from "@/lib/format";
 import { Cost } from "../Cost";
+import { FindingBadge } from "../FindingBadge";
 
 /** Same colors as the run summary in the office header. */
 const RUN_STATUS = { running: "thinking", ok: "done", cancelled: "waiting", error: "error" } as const;
@@ -18,6 +19,7 @@ export function RunsTable({ runs, replayHref, compareHref }: { runs: RunStats[];
             <th className="py-1.5 pr-4 text-right font-medium">Calls</th>
             <th className="py-1.5 pr-4 text-right font-medium">Tokens</th>
             <th className="py-1.5 pr-4 text-right font-medium">Errors</th>
+            <th className="py-1.5 pr-4 text-right font-medium">Findings</th>
             <th className="py-1.5 text-right font-medium">Cost</th>
             {replayHref && (
               <th className="py-1.5 pl-4 font-medium">
@@ -45,6 +47,7 @@ export function RunsTable({ runs, replayHref, compareHref }: { runs: RunStats[];
                 {formatTokens(r.tokens_in)}→{formatTokens(r.tokens_out)}
               </td>
               <td className="py-1.5 pr-4 text-right">{r.errors || "—"}</td>
+              <td className="py-1.5 pr-4 text-right">{r.findings ? <FindingBadge count={r.findings} /> : "—"}</td>
               <td className="whitespace-nowrap py-1.5 text-right font-mono">
                 <Cost totals={r} />
               </td>

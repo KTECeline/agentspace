@@ -121,6 +121,7 @@ export function computeStats(workspace: string, window: StatsWindow, rows: Stats
         started_at: meta?.started_at ?? llmByRun.get(run_id)?.[0]?.ts ?? null,
         duration_ms: meta?.duration_ms ?? null,
         errors: errorsByRun.get(run_id)?.length ?? 0,
+        findings: meta?.findings ?? 0,
         ...totalsOf(llmByRun.get(run_id) ?? []),
       };
     })

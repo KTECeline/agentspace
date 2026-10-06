@@ -6,6 +6,7 @@ import { Vector3 } from "three";
 import type { OfficeLayout } from "@/lib/layout";
 import { teamLabel } from "@/lib/format";
 import { useOffice } from "@/lib/store";
+import { FindingBadge } from "../FindingBadge";
 import { bubbleText } from "./statusStyle";
 
 /**
@@ -88,6 +89,7 @@ const AgentTag = memo(function AgentTag({ agentId, showName }: { agentId: string
   const bubble = bubbleText(agent.status, agent.status_detail);
   return (
     <div className="flex flex-col items-center gap-1 pb-1">
+      <FindingBadge count={agent.findings} className="shadow-md" />
       {bubble && (
         <div
           data-status={agent.status}

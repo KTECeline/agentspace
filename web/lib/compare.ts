@@ -28,6 +28,8 @@ export interface RunProfile {
   /** `error` events. Failed tool calls are counted apart: one failure often shows up as both. */
   errors: number;
   failedTools: number;
+  /** Detector findings (D-044). */
+  findings: number;
   handoffs: number;
   approvals: number;
   llmP50: number | null;
@@ -51,6 +53,7 @@ export function profileRun(events: AgentSpaceEvent[]): RunProfile {
     toolCalls: 0,
     errors: 0,
     failedTools: 0,
+    findings: 0,
     handoffs: 0,
     approvals: 0,
     llmP50: null,
@@ -106,6 +109,9 @@ export function profileRun(events: AgentSpaceEvent[]): RunProfile {
         return;
       case "approval.requested":
         p.approvals += 1;
+        return;
+      case "anomaly.detected":
+        p.findings += 1;
         return;
       default:
         return;
@@ -198,6 +204,7 @@ export function compareRuns(eventsA: AgentSpaceEvent[], eventsB: AgentSpaceEvent
     metric("tool_calls", "Tool calls", "count", (p) => p.toolCalls),
     metric("failed_tools", "Failed tool calls", "count", (p) => p.failedTools),
     metric("errors", "Errors", "count", (p) => p.errors),
+    metric("findings", "Findings", "count", (p) => p.findings),
     metric("handoffs", "Handoffs", "count", (p) => p.handoffs),
     metric("approvals", "Approvals asked", "count", (p) => p.approvals),
     metric("llm_p50", "Model latency p50", "ms", (p) => p.llmP50),

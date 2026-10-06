@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, ScrollText, X } from "lucide-react";
 import type { StoredEvent } from "@agentspace/spec-types";
-import { currentStep, toolCalls } from "@/lib/agentDetail";
-import { clock, costInfo, describe, formatDuration, formatTokens, teamLabel, timeAgo } from "@/lib/format";
+import { currentStep, findingsFor, toolCalls } from "@/lib/agentDetail";
+import { clock, costInfo, describe, evidenceRows, formatDuration, formatTokens, teamLabel, timeAgo } from "@/lib/format";
 import { Cost } from "../Cost";
 import { useOffice } from "@/lib/store";
 import { useNow } from "@/lib/useNow";
 import { useThrottled } from "@/lib/useThrottled";
+import { FindingBadge } from "../FindingBadge";
 import { StatusBadge } from "../StatusBadge";
 import { ApprovalCard } from "../operator/Approvals";
 
@@ -43,6 +44,8 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
 
   const step = useMemo(() => currentStep(events, agentId), [events, agentId]);
   const tools = useMemo(() => toolCalls(events, agentId), [events, agentId]);
+  const runId = agent?.current_run_id ?? null;
+  const findings = useMemo(() => findingsFor(events, agentId, runId), [events, agentId, runId]);
   const log = useMemo(() => {
     const out: StoredEvent[] = [];
     for (let i = events.length - 1; i >= 0 && out.length < 60; i--) {
@@ -72,6 +75,7 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
             {agent.framework ? ` · ${agent.framework}` : ""}
           </p>
         </div>
+        <FindingBadge count={agent.findings} className="mt-1" />
         <StatusBadge status={agent.status} />
         <button
           type="button"
@@ -102,6 +106,33 @@ export function AgentPanel({ agentId, onShowInLog }: { agentId: string; onShowIn
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Waiting for you</h3>
             {approvals.map((a) => (
               <ApprovalCard key={a.approval_id} approval={a} showAgent={false} />
+            ))}
+          </div>
+        )}
+
+        {findings.length > 0 && (
+          <div className="flex flex-col gap-2 border-b border-border p-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Findings in this run</h3>
+            {findings.map((f) => (
+              <article key={f.id} data-status={f.severity === "critical" ? "error" : "using_tool"} className="rounded-lg border border-[var(--st-dot)] bg-[var(--st-bg)] p-3">
+                <p className="text-sm font-medium text-[var(--st-fg)]">
+                  {f.message}
+                  {f.severity === "critical" && <span className="ml-1.5 text-xs font-semibold uppercase">critical</span>}
+                </p>
+                <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                  {evidenceRows(f.evidence)
+                    .filter(([label]) => label !== "Tool")
+                    .map(([label, value]) => (
+                      <div key={label} className="contents">
+                        <dt className="text-muted">{label}</dt>
+                        <dd className="min-w-0 break-words font-mono tabular-nums">{value}</dd>
+                      </div>
+                    ))}
+                </dl>
+                <p className="mt-1.5 text-xs text-muted">
+                  {f.detector.replace(/_/g, " ")} · {clock(f.ts).slice(0, 8)}
+                </p>
+              </article>
             ))}
           </div>
         )}

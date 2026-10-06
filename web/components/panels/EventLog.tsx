@@ -14,6 +14,7 @@ interface Props {
 
 const TYPE_TONE: Partial<Record<StoredEvent["type"], string>> = {
   error: "error",
+  "anomaly.detected": "using_tool",
   handoff: "thinking",
   "approval.requested": "waiting_human",
   "tool.call": "using_tool",

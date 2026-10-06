@@ -136,6 +136,8 @@ export interface RunStats extends CostTotals {
   started_at: string | null;
   duration_ms: number | null;
   errors: number;
+  /** Detector findings in the run (D-044). */
+  findings: number;
 }
 
 export interface AgentStats extends CostTotals, Latency {

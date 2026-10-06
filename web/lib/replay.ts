@@ -7,7 +7,7 @@ import { MAX_EVENTS } from "./state";
  * timeline, the moments worth jumping to, and the office state at any point in it.
  */
 
-export type MarkerKind = "error" | "handoff" | "control" | "approval";
+export type MarkerKind = "error" | "finding" | "handoff" | "control" | "approval";
 
 export interface Marker {
   /** Index of the event in the timeline. */
@@ -66,6 +66,8 @@ function markerFor(e: AgentSpaceEvent): Pick<Marker, "kind" | "label"> | null {
       return { kind: "error", label: `Error: ${e.data.message}` };
     case "run.finished":
       return e.data.status === "error" ? { kind: "error", label: "Run failed" } : null;
+    case "anomaly.detected":
+      return { kind: "finding", label: `Finding: ${e.data.message}` };
     case "handoff":
       return { kind: "handoff", label: `Handoff ${e.data.from_agent_id} → ${e.data.to_agent_id}` };
     case "run.control":

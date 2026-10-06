@@ -1,6 +1,7 @@
 import type { AgentState } from "@agentspace/spec-types";
 import { formatTokens, timeAgo } from "@/lib/format";
 import { Cost } from "./Cost";
+import { FindingBadge } from "./FindingBadge";
 import { StatusBadge } from "./StatusBadge";
 
 interface Props {
@@ -23,7 +24,7 @@ export function AgentCard({ agent, now, selected, onSelect }: Props) {
       type="button"
       data-status={agent.status}
       aria-pressed={selected}
-      aria-label={`${agent.name}, ${agent.status.replace("_", " ")}. ${selected ? "Close details." : "Show details."}`}
+      aria-label={`${agent.name}, ${agent.status.replace("_", " ")}${agent.findings ? `, ${agent.findings} ${agent.findings === 1 ? "finding" : "findings"}` : ""}. ${selected ? "Close details." : "Show details."}`}
       onClick={() => onSelect(agent.agent_id)}
       className={`agent-card group flex w-full flex-col gap-3 rounded-xl border bg-surface p-4 text-left transition-[border-color,box-shadow] duration-150 hover:border-[var(--st-dot)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         selected ? "border-accent shadow-[0_0_0_1px_var(--accent)]" : "border-border"
@@ -39,7 +40,10 @@ export function AgentCard({ agent, now, selected, onSelect }: Props) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <h3 className="truncate font-semibold">{agent.name}</h3>
-            <StatusBadge status={agent.status} />
+            <span className="flex shrink-0 items-center gap-1.5">
+              <FindingBadge count={agent.findings} />
+              <StatusBadge status={agent.status} />
+            </span>
           </div>
           <p className="truncate text-sm text-muted">{agent.role ?? agent.framework ?? agent.agent_id}</p>
         </div>

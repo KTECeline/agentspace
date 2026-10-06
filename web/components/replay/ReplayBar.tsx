@@ -10,6 +10,7 @@ const SPEEDS = [1, 4, 16] as const;
 /** Marker colors reuse the status tokens (data-status), each with a legend entry and a label. */
 const KINDS: Record<MarkerKind, { status: string; label: string }> = {
   error: { status: "error", label: "Errors" },
+  finding: { status: "using_tool", label: "Findings" },
   handoff: { status: "thinking", label: "Handoffs" },
   approval: { status: "waiting_human", label: "Approvals" },
   control: { status: "waiting", label: "Pause / cancel" },
@@ -96,6 +97,11 @@ export function ReplayBar({ player, showClock }: { player: ReplayPlayer; showClo
           <button type="button" className={buttonClass} onClick={() => jump(findMarker(tl, position, "error", 1))} disabled={!counts.error}>
             Next error
           </button>
+          {counts.finding ? (
+            <button type="button" className={buttonClass} onClick={() => jump(findMarker(tl, position, "finding", 1))}>
+              Next finding
+            </button>
+          ) : null}
           <button type="button" className={buttonClass} onClick={() => jump(findMarker(tl, position, "handoff", 1))} disabled={!counts.handoff}>
             Next handoff
           </button>

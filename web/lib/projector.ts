@@ -79,6 +79,12 @@ export class Projector {
       model: null,
       findings: 0,
     };
+    // A finding is about the agent, not something it did: it only counts toward its current run.
+    if (ev.type === "anomaly.detected") {
+      if (agent.current_run_id === ev.run_id) agent = { ...agent, findings: agent.findings + 1 };
+      this.agents.set(akey, agent);
+      return { agent, run };
+    }
     if (ev.type === "agent.registered") {
       agent = { ...agent, team_id: ev.team_id, name: ev.data.name, role: ev.data.role ?? null, framework: ev.data.framework ?? null };
     } else if (ev.type === "agent.status") {
@@ -87,7 +93,7 @@ export class Projector {
     agent = {
       ...agent,
       // Findings count for the agent's current run only (the collector does the same).
-      findings: (agent.current_run_id === ev.run_id ? agent.findings : 0) + finding,
+      findings: agent.current_run_id === ev.run_id ? agent.findings : 0,
       last_event_at: ev.ts,
       current_run_id: ev.run_id,
       team_id: ev.team_id ?? agent.team_id,

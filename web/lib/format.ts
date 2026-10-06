@@ -112,3 +112,32 @@ export function teamLabel(id: string): string {
   if (!id) return "Unassigned";
   return id.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+const EVIDENCE_LABEL: Record<string, string> = {
+  tool: "Tool",
+  metric: "Measure",
+  count: "This run",
+  value: "This run",
+  handoffs: "Handoffs",
+  round_trips: "Round trips",
+  baseline_p50: "Usually (median)",
+  baseline_p95: "95th percentile",
+  baseline_runs: "Runs compared",
+  last_error: "Last error",
+};
+
+/** A finding's evidence as label/value pairs, known keys first and in a readable order (D-044). */
+export function evidenceRows(evidence: Record<string, unknown> | undefined): [string, string][] {
+  if (!evidence) return [];
+  const order = Object.keys(EVIDENCE_LABEL);
+  const cost = evidence.metric === "cost";
+  return Object.entries(evidence)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .sort(([a], [b]) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99))
+    .map(([k, v]) => {
+      const label = EVIDENCE_LABEL[k] ?? k.replace(/_/g, " ");
+      const money = cost && (k === "value" || k === "baseline_p50" || k === "baseline_p95");
+      const text = typeof v === "number" ? (money ? formatCost(v) : v.toLocaleString("en-US")) : String(v);
+      return [label, text];
+    });
+}

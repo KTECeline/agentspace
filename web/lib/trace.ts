@@ -15,7 +15,7 @@ import { usageOf, type Usage } from "./projector";
  * so a node maps straight onto the replay scrubber.
  */
 
-export type TraceKind = "run" | "step" | "tool" | "llm" | "handoff" | "approval" | "message" | "error" | "control";
+export type TraceKind = "run" | "step" | "tool" | "llm" | "handoff" | "approval" | "message" | "error" | "control" | "finding";
 /** `none`: nothing to judge (a model call, a handoff, an approval that was rejected). */
 export type TraceStatus = "ok" | "error" | "open" | "none";
 
@@ -41,6 +41,8 @@ export interface TraceNode {
   toolCalls: number;
   /** This node or a descendant failed. */
   hasError: boolean;
+  /** Detector findings (D-044) on this node or under it. Not failures: they don't count as errors. */
+  findings: number;
 }
 
 export interface Trace {
@@ -174,6 +176,12 @@ export function buildTrace(events: AgentSpaceEvent[]): Trace {
         attach(n, e, true);
         return;
       }
+      case "anomaly.detected": {
+        const n = node(`event:${e.id}`, "finding", e.data.message, e.agent_id, i);
+        n.status = "none";
+        attach(n, e, true);
+        return;
+      }
       case "run.control": {
         const verb = e.data.action === "pause" ? "Paused" : e.data.action === "resume" ? "Resumed" : "Cancelled";
         const n = node(`event:${e.id}`, "control", `${verb}${e.data.by ? ` by ${e.data.by}` : ""}`, e.agent_id, i);
@@ -201,6 +209,7 @@ export function buildTrace(events: AgentSpaceEvent[]): Trace {
     n.llmCalls = (n.kind === "llm" ? 1 : 0) + n.children.reduce((s, c) => s + c.llmCalls, 0);
     n.toolCalls = (n.kind === "tool" ? 1 : 0) + n.children.reduce((s, c) => s + c.toolCalls, 0);
     n.hasError = n.status === "error" || n.children.some((c) => c.hasError);
+    n.findings = (n.kind === "finding" ? 1 : 0) + n.children.reduce((s, c) => s + c.findings, 0);
   };
   walk(root, 0);
 
@@ -251,6 +260,7 @@ function node(id: string, kind: TraceKind, label: string, agentId: string | null
     llmCalls: 0,
     toolCalls: 0,
     hasError: false,
+    findings: 0,
   };
 }
 
