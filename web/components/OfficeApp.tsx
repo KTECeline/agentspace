@@ -19,6 +19,7 @@ import { ReplayBar } from "./replay/ReplayBar";
 import { ScenarioPicker } from "./ScenarioPicker";
 import { AgentPanel } from "./panels/AgentPanel";
 import { EventLog } from "./panels/EventLog";
+import { TracePanel } from "./panels/TracePanel";
 
 const OfficeScene = dynamic(() => import("./office/OfficeScene"), {
   ssr: false,
@@ -47,7 +48,8 @@ export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: P
   const agents = useMemo(() => Object.values(agentsById), [agentsById]);
   const run = useThrottled(useOffice((s) => latestRun(s.runs)), 250);
   const [logFilter, setLogFilter] = useState<string | null>(null);
-  const [tab, setTab] = useState<"activity" | "approvals">("activity");
+  // A stored-run replay is for debugging, so it opens on the trace.
+  const [tab, setTab] = useState<Tab>(source.kind === "replay" ? "trace" : "activity");
   const pendingApprovals = usePendingCount();
   const publicMode = useOffice((s) => !!s.info?.public_readonly);
   const openTokenDialog = useOffice((s) => s.openTokenDialog);
@@ -57,6 +59,9 @@ export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: P
   const workspace = source.kind === "live" || source.kind === "replay" ? source.workspace : source.kind === "stress" ? "stress" : "demo";
   const collectorUrl = source.kind === "live" ? source.collectorUrl : null;
   const player = useOffice((s) => s.player);
+  const names = useMemo(() => Object.fromEntries(agents.map((a) => [a.agent_id, a.name])), [agents]);
+  const tabs: Tab[] = player ? ["activity", "trace", "approvals"] : ["activity", "approvals"];
+  const shownTab: Tab = tab === "trace" && !player ? "activity" : tab;
   const officeQuery = source.kind === "live" || source.kind === "replay" ? new URLSearchParams({ collector: source.collectorUrl, workspace }).toString() : "";
 
   return (
@@ -158,10 +163,12 @@ export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: P
             />
           ) : (
             <div className="flex min-h-0 flex-col gap-2">
-              <RightTabs tab={tab} onChange={setTab} pending={pendingApprovals} />
-              <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
-                {tab === "approvals" ? (
+              <RightTabs tabs={tabs} tab={shownTab} onChange={setTab} pending={pendingApprovals} />
+              <div role="tabpanel" id={`panel-${shownTab}`} aria-labelledby={`tab-${shownTab}`} className="flex min-h-0 flex-1 flex-col">
+                {shownTab === "approvals" ? (
                   <ApprovalsPanel />
+                ) : shownTab === "trace" && player ? (
+                  <TracePanel player={player} names={names} />
                 ) : (
                   <EventLog events={events} agents={agents} agentFilter={logFilter} onAgentFilter={setLogFilter} />
                 )}
@@ -236,11 +243,11 @@ function ConnectionPill({ connection, onRetry }: { connection: Connection; onRet
   );
 }
 
-function RightTabs({ tab, onChange, pending }: { tab: "activity" | "approvals"; onChange: (t: "activity" | "approvals") => void; pending: number }) {
-  const tabs = [
-    { id: "activity" as const, label: "Activity" },
-    { id: "approvals" as const, label: pending ? `Approvals (${pending})` : "Approvals" },
-  ];
+type Tab = "activity" | "trace" | "approvals";
+
+function RightTabs({ tabs: ids, tab, onChange, pending }: { tabs: Tab[]; tab: Tab; onChange: (t: Tab) => void; pending: number }) {
+  const labels: Record<Tab, string> = { activity: "Activity", trace: "Trace", approvals: pending ? `Approvals (${pending})` : "Approvals" };
+  const tabs = ids.map((id) => ({ id, label: labels[id] }));
   return (
     <div
       role="tablist"
@@ -248,7 +255,8 @@ function RightTabs({ tab, onChange, pending }: { tab: "activity" | "approvals"; 
       className="flex self-start rounded-lg border border-border bg-surface p-0.5"
       onKeyDown={(e) => {
         if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-          const next = tab === "activity" ? "approvals" : "activity";
+          const at = ids.indexOf(tab) + (e.key === "ArrowRight" ? 1 : -1);
+          const next = ids[(at + ids.length) % ids.length]!;
           onChange(next);
           document.getElementById(`tab-${next}`)?.focus();
         }
