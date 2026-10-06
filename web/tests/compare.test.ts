@@ -70,9 +70,9 @@ describe("compareRuns", () => {
     const bad = run({ model: "claude-sonnet-4-5", tests: 3, fail: true, cost: 0.04 });
     const c = compareRuns(good, bad);
     expect(c.statusChanged).toBe(true);
-    expect(c.changed.map((m) => m.key)).toEqual(["duration", "cost", "tool_calls", "errors"]);
+    expect(c.changed.map((m) => m.key)).toEqual(["duration", "cost", "tool_calls", "failed_tools"]);
     expect(c.metrics.find((m) => m.key === "cost")!.ratio).toBeCloseTo(4);
-    expect(c.metrics.find((m) => m.key === "errors")!.ratio).toBeNull(); // 0 → 1: no ratio
+    expect(c.metrics.find((m) => m.key === "failed_tools")!.ratio).toBeNull(); // 0 → 1: no ratio
     expect(c.models).toEqual([
       { model: "claude-haiku-4-5", a: 1, b: 0 },
       { model: "claude-sonnet-4-5", a: 0, b: 1 },

@@ -23,6 +23,8 @@ export interface ReplayOptions {
   connection?: Extract<Connection, "recording" | "replay">;
   /** Shown under the scrubber (for example, that a long run was cut). */
   note?: string;
+  /** Open paused on this event (an index into the timeline), for links into a run. */
+  startIndex?: number;
 }
 
 const TICK_MS = 50;
@@ -46,6 +48,7 @@ export class ReplayPlayer {
   private lastNotify = 0;
   private pendingSeek: number | null = null;
   readonly note: string | null;
+  readonly startIndex: number | null;
 
   constructor(
     readonly timeline: Timeline,
@@ -54,11 +57,19 @@ export class ReplayPlayer {
   ) {
     this.status = { position: 0, duration: timeline.duration, playing: false, speed: opts.speed ?? 1, count: 0 };
     this.note = opts.note ?? null;
+    this.startIndex = opts.startIndex !== undefined && timeline.times[opts.startIndex] !== undefined ? opts.startIndex : null;
   }
 
   readonly source: Source = (sink) => {
     this.sink = sink;
     sink.setConnection(this.opts.connection ?? "replay");
+    if (this.startIndex !== null) {
+      this.jump(this.timeline.times[this.startIndex]!);
+      return () => {
+        this.stopTimers();
+        this.sink = null;
+      };
+    }
     this.jump(0);
     if (this.opts.autoplay ?? true) this.play();
     return () => {

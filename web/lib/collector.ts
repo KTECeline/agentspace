@@ -64,6 +64,11 @@ export function fetchStats(base: string, workspace: string, since: string | null
   return call(base, `/v1/workspaces/${ws(workspace)}/stats${q}`, token);
 }
 
+/** Most recent runs first. */
+export function fetchRuns(base: string, workspace: string, token: string | null, limit = 200): Promise<RunState[]> {
+  return call(base, `/v1/workspaces/${ws(workspace)}/runs?limit=${limit}`, token);
+}
+
 const PAGE = 5000;
 /** Enough for any run worth replaying; longer ones are cut (and say so). */
 export const MAX_REPLAY_EVENTS = 50_000;

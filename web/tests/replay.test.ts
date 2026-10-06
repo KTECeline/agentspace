@@ -118,6 +118,19 @@ describe("ReplayPlayer", () => {
     return { sent, connections, stop, state: () => state };
   }
 
+  it("opens paused on a chosen event (links from /compare), and ignores an index outside the run", () => {
+    const tl = buildTimeline(recording.events);
+    const at = tl.events.findIndex((e) => e.type === "tool.result");
+    const player = new ReplayPlayer(tl, "demo", { startIndex: at });
+    const { stop } = attach(player);
+    vi.advanceTimersByTime(1000);
+    expect(player.getStatus().playing).toBe(false);
+    expect(player.getStatus().count).toBeGreaterThan(at);
+    expect(tl.events[player.getStatus().count - 1]!.ts).toBe(tl.events[at]!.ts);
+    stop();
+    expect(new ReplayPlayer(tl, "demo", { startIndex: 10_000 }).startIndex).toBeNull();
+  });
+
   it("plays to the end at the chosen speed, ending in the same state as the collector would", () => {
     const tl = buildTimeline(recording.events);
     const player = new ReplayPlayer(tl, "demo", { speed: 16 });

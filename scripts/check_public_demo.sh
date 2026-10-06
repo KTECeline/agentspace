@@ -11,11 +11,11 @@ fail() { echo "FAIL: $*"; exit 1; }
 ok() { echo "ok: $*"; }
 H=(-sS -A agentspace-demo-check ${VERCEL_BYPASS:+-H "x-vercel-protection-bypass: $VERCEL_BYPASS"})
 
-for path in "/" "/dashboard" "/replay?run=x&collector=https://attacker.example" "/?collector=https://attacker.example"; do
+for path in "/" "/dashboard" "/replay?run=x&collector=https://attacker.example" "/compare?run=x&collector=https://attacker.example" "/?collector=https://attacker.example"; do
   loc=$(curl "${H[@]}" -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE$path")
   [[ "$loc" =~ ^30[1278]\ .*/demo ]] || fail "$path should redirect to /demo, got: $loc"
 done
-ok "the live office, /dashboard and /replay redirect to /demo, even with ?collector="
+ok "the live office, /dashboard, /replay and /compare redirect to /demo, even with ?collector="
 
 for path in /demo /docs /docs/security /recordings/dev-team.json; do
   code=$(curl "${H[@]}" -o /dev/null -w '%{http_code}' "$BASE$path")

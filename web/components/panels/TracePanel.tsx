@@ -76,8 +76,9 @@ export function TracePanel({ player, names: known }: Props) {
   }, [tl, known]);
   const { count } = useSyncExternalStore(player.subscribe, player.getStatus, player.getStatus);
   const active = count > 0 ? nodeAt(trace, count - 1) : null;
-  const [selected, setSelected] = useState<string | null>(null);
-  const [focused, setFocused] = useState<string>(trace.root.id);
+  // Opened on an event (a link from /compare): start with that node selected.
+  const [selected, setSelected] = useState<string | null>(() => (player.startIndex !== null ? (nodeAt(trace, player.startIndex)?.id ?? null) : null));
+  const [focused, setFocused] = useState<string>(() => selected ?? trace.root.id);
   // User choices override the default (open: the root, and the path to the active or selected node).
   const [toggled, setToggled] = useState<Map<string, boolean>>(new Map());
 

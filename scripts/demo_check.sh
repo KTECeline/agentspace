@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Done-check (Phases 1-4b):
 #   1. docker compose up: collector + web are healthy
-#   2. the web image serves the office, /demo (and its bundled recording), /dashboard and /replay
+#   2. the web image serves the office, /demo (and its bundled recording), /dashboard, /replay and /compare
 #   3. approvals and pause / resume / cancel work end to end (scripts/controls_check.sh)
 #   3b. costs, the price table and the stats API (scripts/cost_check.sh)
 #   4. the example's agents show up in the collector live
@@ -25,14 +25,14 @@ else
   docker compose up -d --build --force-recreate --wait
 fi
 
-step "Checking the web app (office, /demo, bundled recording, /dashboard, /replay)"
-for path in / /demo /dashboard "/replay?run=none"; do
+step "Checking the web app (office, /demo, bundled recording, /dashboard, /replay, /compare)"
+for path in / /demo /dashboard "/replay?run=none" /compare; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "$WEB$path")
   [ "$code" = 200 ] || { echo "FAIL: GET $path -> $code"; exit 1; }
 done
 curl -fsS "$WEB/recordings/dev-team.json" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["format"]=="agentspace-recording" and len(r["events"])>10' \
   || { echo "FAIL: recording missing or invalid"; exit 1; }
-echo "ok: /, /demo, the recording, /dashboard and /replay are served"
+echo "ok: /, /demo, the recording, /dashboard, /replay and /compare are served"
 
 step "Approvals and run controls"
 AGENTSPACE_URL="$COLLECTOR" scripts/controls_check.sh

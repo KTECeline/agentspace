@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import type { AgentSpaceEvent } from "@agentspace/spec-types";
 import { ApiError, fetchInfo, fetchRunEvents, loadToken } from "./collector";
 import { buildTimeline } from "./replay";
 import { liveSource } from "./sources/live";
 import type { Recording } from "./sources/recorded";
-import { ReplayPlayer } from "./sources/replay";
+import { ReplayPlayer, type ReplayOptions } from "./sources/replay";
 import { stressSource } from "./sources/stress";
 import { clearQueue, enqueue, useOffice } from "./store";
 
@@ -13,7 +14,7 @@ export type SourceConfig =
   | { kind: "live"; collectorUrl: string; workspace: string }
   | { kind: "recording"; url: string; speed?: number }
   /** Replay one stored run from a collector, with a scrubber. */
-  | { kind: "replay"; collectorUrl: string; workspace: string; runId: string }
+  | { kind: "replay"; collectorUrl: string; workspace: string; runId: string; /** Open paused on this event id. */ eventId?: string }
   | { kind: "stress"; agents: number; rate: number };
 
 /** Connects the chosen data source to the office store. Returns `retry` for live mode. */
@@ -58,7 +59,7 @@ export function useSource(config: SourceConfig): { retry: () => void; error: str
           const player =
             config.kind === "recording"
               ? new ReplayPlayer(buildTimeline(events), "demo", { speed: config.speed ?? 1, loop: true, connection: "recording" })
-              : new ReplayPlayer(buildTimeline(events), config.workspace, {
+              : replayPlayer(events, config.workspace, config.eventId, {
                   connection: "replay",
                   note: "truncated" in rec && rec.truncated ? `Only the first ${events.length.toLocaleString()} events of this run are shown.` : undefined,
                 });
@@ -116,4 +117,10 @@ function restamp<T extends { ts: string }>(events: T[]): T[] {
   if (!Number.isFinite(first)) return events;
   const shift = Date.now() - first;
   return events.map((e) => ({ ...e, ts: new Date(Date.parse(e.ts) + shift).toISOString() }));
+}
+
+function replayPlayer(events: AgentSpaceEvent[], workspace: string, eventId: string | undefined, opts: ReplayOptions): ReplayPlayer {
+  const timeline = buildTimeline(events);
+  const at = eventId ? timeline.events.findIndex((e) => e.id === eventId) : -1;
+  return new ReplayPlayer(timeline, workspace, at >= 0 ? { ...opts, startIndex: at } : opts);
 }

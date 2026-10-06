@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "Replay a stored run in the AgentSpace office.",
 };
 
-/** `?run=` (required), plus the office's `?collector=` and `?workspace=`. */
+/** `?run=` (required), `?event=` (open paused there), plus the office's `?collector=` and `?workspace=`. */
 export default async function ReplayPage({ searchParams }: PageProps<"/replay">) {
   await connection();
   collectorPagesAllowed();
@@ -17,6 +17,7 @@ export default async function ReplayPage({ searchParams }: PageProps<"/replay">)
   const collectorUrl = pick(params.collector) ?? process.env.AGENTSPACE_PUBLIC_URL ?? "http://localhost:4800";
   const workspace = pick(params.workspace) ?? process.env.AGENTSPACE_WORKSPACE ?? "default";
   const runId = pick(params.run);
+  const eventId = pick(params.event);
   if (!runId) {
     return (
       <main className="mx-auto max-w-prose p-8">
@@ -28,5 +29,5 @@ export default async function ReplayPage({ searchParams }: PageProps<"/replay">)
       </main>
     );
   }
-  return <OfficeApp source={{ kind: "replay", collectorUrl, workspace, runId }} />;
+  return <OfficeApp source={{ kind: "replay", collectorUrl, workspace, runId, ...(eventId ? { eventId } : {}) }} />;
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { Box, ChartColumn, Eye, History, KeyRound, LayoutGrid, Radio, RefreshCw } from "lucide-react";
+import { Box, ChartColumn, Eye, GitCompareArrows, History, KeyRound, LayoutGrid, Radio, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
 import { formatDuration, formatTokens } from "@/lib/format";
 import { latestRun } from "@/lib/state";
@@ -98,6 +98,16 @@ export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: P
           >
             <Radio aria-hidden className="size-4" />
             Back to live
+          </a>
+        )}
+        {source.kind === "replay" && (
+          <a
+            href={`/compare?${officeQuery}&run=${encodeURIComponent(source.runId)}`}
+            title="Compare with the latest successful run of the same workflow"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <GitCompareArrows aria-hidden className="size-4" />
+            Compare
           </a>
         )}
         {run && <RunSummary run={run} replayHref={collectorUrl ? `/replay?${officeQuery}&run=${encodeURIComponent(run.run_id)}` : undefined} />}

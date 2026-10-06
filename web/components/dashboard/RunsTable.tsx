@@ -5,7 +5,7 @@ import { Cost } from "../Cost";
 /** Same colors as the run summary in the office header. */
 const RUN_STATUS = { running: "thinking", ok: "done", cancelled: "waiting", error: "error" } as const;
 
-export function RunsTable({ runs, replayHref }: { runs: RunStats[]; replayHref?: (runId: string) => string }) {
+export function RunsTable({ runs, replayHref, compareHref }: { runs: RunStats[]; replayHref?: (runId: string) => string; compareHref?: (runId: string) => string }) {
   if (!runs.length) return <p className="text-sm text-muted">No runs in this period.</p>;
   return (
     <div className="max-h-[28rem] overflow-auto pr-3 [scrollbar-gutter:stable]">
@@ -49,13 +49,22 @@ export function RunsTable({ runs, replayHref }: { runs: RunStats[]; replayHref?:
                 <Cost totals={r} />
               </td>
               {replayHref && (
-                <td className="py-1.5 pl-4">
+                <td className="whitespace-nowrap py-1.5 pl-4">
                   <a
                     href={replayHref(r.run_id)}
                     className="rounded text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Replay<span className="sr-only"> {r.name ?? r.run_id}</span>
                   </a>
+                  {compareHref && (
+                    <a
+                      href={compareHref(r.run_id)}
+                      title="Compare with the latest successful run of the same workflow"
+                      className="ml-3 rounded text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Compare<span className="sr-only"> {r.name ?? r.run_id}</span>
+                    </a>
+                  )}
                 </td>
               )}
             </tr>

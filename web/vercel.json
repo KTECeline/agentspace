@@ -6,7 +6,8 @@
   "redirects": [
     { "source": "/", "destination": "/demo", "permanent": false },
     { "source": "/dashboard", "destination": "/demo", "permanent": false },
-    { "source": "/replay", "destination": "/demo", "permanent": false }
+    { "source": "/replay", "destination": "/demo", "permanent": false },
+    { "source": "/compare", "destination": "/demo", "permanent": false }
   ],
   "headers": [
     {

@@ -1,4 +1,4 @@
-import type { AgentSpaceEvent } from "@agentspace/spec-types";
+import type { AgentSpaceEvent, RunState } from "@agentspace/spec-types";
 import { usageOf, type Usage } from "./projector";
 
 /**
@@ -25,8 +25,9 @@ export interface RunProfile {
   usage: Usage;
   llmCalls: number;
   toolCalls: number;
-  /** `error` events, failed tool calls and failed steps. */
+  /** `error` events. Failed tool calls are counted apart: one failure often shows up as both. */
   errors: number;
+  failedTools: number;
   handoffs: number;
   approvals: number;
   llmP50: number | null;
@@ -49,6 +50,7 @@ export function profileRun(events: AgentSpaceEvent[]): RunProfile {
     llmCalls: 0,
     toolCalls: 0,
     errors: 0,
+    failedTools: 0,
     handoffs: 0,
     approvals: 0,
     llmP50: null,
@@ -81,9 +83,6 @@ export function profileRun(events: AgentSpaceEvent[]): RunProfile {
       case "step.started":
         if (e.agent_id && p.path.at(-1) !== e.agent_id) p.path.push(e.agent_id);
         return;
-      case "step.finished":
-        if (!e.data.ok) p.errors += 1;
-        return;
       case "llm.call":
         p.llmCalls += 1;
         if (e.model) p.models[e.model] = (p.models[e.model] ?? 0) + 1;
@@ -95,7 +94,7 @@ export function profileRun(events: AgentSpaceEvent[]): RunProfile {
         return;
       case "tool.result":
         if (!e.data.ok) {
-          p.errors += 1;
+          p.failedTools += 1;
           (p.tools[e.data.tool_name] ??= { calls: 0, failed: 0 }).failed += 1;
         }
         return;
@@ -197,6 +196,7 @@ export function compareRuns(eventsA: AgentSpaceEvent[], eventsB: AgentSpaceEvent
     metric("tokens_out", "Tokens out", "tokens", (p) => p.usage.tokens_out),
     metric("llm_calls", "Model calls", "count", (p) => p.llmCalls),
     metric("tool_calls", "Tool calls", "count", (p) => p.toolCalls),
+    metric("failed_tools", "Failed tool calls", "count", (p) => p.failedTools),
     metric("errors", "Errors", "count", (p) => p.errors),
     metric("handoffs", "Handoffs", "count", (p) => p.handoffs),
     metric("approvals", "Approvals asked", "count", (p) => p.approvals),
@@ -233,4 +233,17 @@ function diverge(a: RunProfile["signature"], b: RunProfile["signature"]): Diverg
 function nearestRank(sorted: number[], q: number): number | null {
   if (!sorted.length) return null;
   return sorted[Math.max(0, Math.ceil(q * sorted.length) - 1)]!;
+}
+
+/**
+ * The run to compare `target` with when none is given: the latest successful run of the same
+ * workflow (same name) that started before it, else the latest successful one of that name.
+ * Runs of a different workflow aren't comparable, so there may be none.
+ */
+export function pickBaseline(runs: RunState[], target: RunState): RunState | null {
+  const ok = runs
+    .filter((r) => r.run_id !== target.run_id && r.status === "ok" && r.name === target.name)
+    .sort((x, y) => (y.started_at ?? "").localeCompare(x.started_at ?? ""));
+  const before = (r: RunState) => !target.started_at || !r.started_at || r.started_at <= target.started_at;
+  return ok.find(before) ?? ok[0] ?? null;
 }
