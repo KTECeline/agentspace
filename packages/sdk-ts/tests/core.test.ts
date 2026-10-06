@@ -137,3 +137,17 @@ describe("manual API", () => {
     expect(c.events).toEqual([]);
   });
 });
+
+describe("hashArguments", () => {
+  it("is stable for equal arguments, whatever the key order or form, and differs otherwise", () => {
+    const { hashArguments } = agentspace;
+    const a = hashArguments({ path: "cart.py", lines: [1, 2] });
+    expect(a).toMatch(/^[0-9a-f]{16}$/);
+    expect(hashArguments({ lines: [1, 2], path: "cart.py" })).toBe(a);
+    expect(hashArguments('{"lines": [1, 2], "path": "cart.py"}')).toBe(a);
+    expect(hashArguments({ path: "cart.py", lines: [2, 1] })).not.toBe(a);
+    expect(hashArguments(undefined)).toMatch(/^[0-9a-f]{16}$/);
+    const huge = "x".repeat(2_000_000);
+    expect(hashArguments(huge)).toBe(hashArguments(`${huge}different after the cap`));
+  });
+});

@@ -47,6 +47,7 @@ def init(
     api_key: str | None = None,
     capture_content: bool = False,
     redact: RedactHook | None = None,
+    hash_arguments: bool = True,
     auto_instrument: bool = True,
     enabled: bool | None = None,
     cancel_mode: Literal["raise", "flag"] = "raise",
@@ -62,6 +63,9 @@ def init(
             only summaries and metadata leave the process.
         redact: ``redact(field, value) -> value`` applied to every content value. Return
             ``None`` to drop it.
+        hash_arguments: Send a keyed hash of each tool call's arguments (not the arguments) so
+            the collector can spot an agent repeating the same call. The key is random per
+            process, so the hash reveals nothing. Set False to send no hash.
         auto_instrument: Turn on adapters for installed frameworks (e.g. LangGraph).
         enabled: Set False (or env ``AGENTSPACE_DISABLED=1``) to make every call a no-op.
         cancel_mode: What an operator's Cancel does. ``"raise"`` (default) raises
@@ -80,6 +84,7 @@ def init(
             api_key=api_key or os.environ.get("AGENTSPACE_API_KEY"),
             capture_content=capture_content,
             redact=redact,
+            hash_arguments=hash_arguments,
             enabled=enabled,
             cancel_mode="flag" if cancel_mode == "flag" else "raise",
             **{k: v for k, v in options.items() if k in _CONFIG_OPTIONS},

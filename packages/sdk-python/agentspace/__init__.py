@@ -28,6 +28,7 @@ from agentspace._control import (
     request_approval,
     request_approval_sync,
 )
+from agentspace._hash import hash_arguments
 
 __version__ = "0.1.0.dev0"
 
@@ -42,6 +43,7 @@ __all__ = [
     "flush",
     "get_client",
     "handoff",
+    "hash_arguments",
     "init",
     "is_cancelled",
     "request_approval",

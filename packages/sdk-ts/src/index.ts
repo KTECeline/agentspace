@@ -19,6 +19,7 @@ import { isPromiseLike, newId, nowIso, slugify, truncate } from "./util.js";
 export type { AgentSpaceEvent, AgentStatus, EventType } from "./spec.js";
 export { hasAsyncContext } from "./context.js";
 export { Cancelled, isCancelled } from "./control.js";
+export { hashArguments } from "./hash.js";
 export type { ApprovalOptions, ApprovalResult, CancelMode, Decision } from "./control.js";
 
 export const SPEC_VERSION = "0.1";

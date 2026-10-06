@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agentspace._context import current_agent, current_run, current_step
+from agentspace._hash import hash_arguments
 from agentspace._log import internal_error
 from agentspace._transport import Transport
 from agentspace._util import new_id, now_iso, truncate
@@ -59,6 +60,8 @@ class Config:
     api_key: str | None = None
     capture_content: bool = False
     redact: RedactHook | None = None
+    #: Send a keyed hash of tool arguments (never the arguments) so repeats can be detected.
+    hash_arguments: bool = True
     max_content_chars: int = 16_000
     max_queue: int = 10_000
     max_batch: int = 100
@@ -176,6 +179,12 @@ class Client:
         except Exception as exc:
             internal_error("content/redact", exc)
             return None
+
+    def args_hash(self, value: Any) -> str | None:
+        """``tool.call.data.arguments_hash`` for ``value``, or None if hashing is turned off."""
+        if not self.config.hash_arguments:
+            return None
+        return hash_arguments(value)
 
     def redact_value(self, field_name: str, value: Any) -> Any:
         """Like ``content`` but ignores ``capture_content``: for values the developer passes
