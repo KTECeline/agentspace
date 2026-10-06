@@ -46,6 +46,8 @@ export function describe(e: StoredEvent): string {
       return `Approval ${e.data.decision}${e.data.comment ? `: ${e.data.comment}` : ""}`;
     case "error":
       return `${e.data.kind ? `${e.data.kind}: ` : ""}${e.data.message}`;
+    case "anomaly.detected":
+      return e.data.message;
   }
 }
 

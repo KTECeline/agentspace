@@ -19,6 +19,7 @@ export const EVENT_TYPES = [
   "approval.requested",
   "approval.resolved",
   "error",
+  "anomaly.detected",
 ] as const satisfies readonly EventType[];
 
 export const AGENT_STATUSES = [

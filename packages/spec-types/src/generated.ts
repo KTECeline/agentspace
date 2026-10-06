@@ -19,7 +19,8 @@ export type AgentSpaceEvent =
   | HandoffEvent
   | ApprovalRequestedEvent
   | ApprovalResolvedEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | AnomalyDetectedEvent;
 export type AgentRegisteredEvent = EventBase & {
   type: "agent.registered";
   data: AgentRegisteredData;
@@ -39,7 +40,8 @@ export type EventType =
   | "handoff"
   | "approval.requested"
   | "approval.resolved"
-  | "error";
+  | "error"
+  | "anomaly.detected";
 export type Id = string;
 export type AgentStatusEvent = EventBase & {
   type: "agent.status";
@@ -103,6 +105,10 @@ export type ApprovalResolvedEvent = EventBase & {
 export type ErrorEvent = EventBase & {
   type: "error";
   data: ErrorData;
+};
+export type AnomalyDetectedEvent = EventBase & {
+  type: "anomaly.detected";
+  data: AnomalyDetectedData;
 };
 
 /**
@@ -269,6 +275,10 @@ export interface ToolCallData {
    * Full prompt/output/argument content. Only present when the SDK runs with capture_content=True, after redaction.
    */
   arguments?: string | {} | unknown[] | null;
+  /**
+   * Keyed hash (HMAC-SHA256, first 16 hex chars) of the canonical JSON of the call's arguments. The key is random per process, so equal hashes mean equal arguments within one process (one run) and nothing can be recovered from it. Sent even when content capture is off; used to detect repeated identical calls (DECISIONS D-044).
+   */
+  arguments_hash?: string;
 }
 export interface ToolResultData {
   tool_name: string;
@@ -311,4 +321,30 @@ export interface ErrorData {
    */
   kind?: string;
   stack?: string;
+}
+/**
+ * A finding from one of the collector's detectors. Only the collector emits this event; ingest rejects it from clients (DECISIONS D-044).
+ */
+export interface AnomalyDetectedData {
+  /**
+   * Which detector fired (repeated_tool_call, failure_loop, handoff_loop, tool_call_outlier, usage_outlier, ...).
+   */
+  detector: string;
+  severity: "info" | "warning" | "critical";
+  /**
+   * Short, human-readable, safe to display (tool and agent names, numbers; never content).
+   */
+  message: string;
+  /**
+   * The numbers behind the finding, e.g. {"count": 4, "baseline_p50": 1, "baseline_runs": 12}.
+   */
+  evidence?: {
+    [k: string]: number | string | boolean;
+  };
+  /**
+   * Ids of the events that triggered it.
+   *
+   * @maxItems 50
+   */
+  subject_ids?: Id[];
 }

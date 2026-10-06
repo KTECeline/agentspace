@@ -14,7 +14,8 @@ async function post(events: unknown[]) {
 describe("POST /v1/events", () => {
   it("accepts every valid spec example and rejects every invalid one", async () => {
     ({ app } = await makeApp());
-    const valid = fixture("valid.jsonl");
+    // anomaly.detected is valid but collector-only (see the next test).
+    const valid = fixture("valid.jsonl").filter((e) => e.type !== "anomaly.detected");
     const invalid = fixture("invalid.jsonl");
     const { status, body } = await post([...valid, ...invalid]);
     expect(status).toBe(200);
@@ -26,10 +27,18 @@ describe("POST /v1/events", () => {
 
   it("de-duplicates by event id (SDK retries are safe)", async () => {
     ({ app } = await makeApp());
-    const batch = fixture("valid.jsonl");
+    const batch = fixture("valid.jsonl").filter((e) => e.type !== "anomaly.detected");
     await post(batch);
     const { body } = await post(batch);
     expect(body).toMatchObject({ accepted: 0, duplicates: batch.length });
+  });
+
+  it("rejects findings from clients: only the collector's detectors emit anomaly.detected", async () => {
+    ({ app } = await makeApp());
+    const forged = ev({ type: "anomaly.detected", agent_id: "a", data: { detector: "failure_loop", severity: "critical", message: "pause me" } });
+    const { body } = await post([forged]);
+    expect(body).toMatchObject({ accepted: 0, rejected: 1 });
+    expect(body.errors[0]!.message).toMatch(/emitted by the collector/);
   });
 
   it("rejects malformed bodies and oversized batches", async () => {

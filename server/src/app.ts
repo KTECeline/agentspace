@@ -161,6 +161,8 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
       const id = (raw as { id?: unknown })?.id;
       let message: string | null = null;
       if (!res.ok) message = res.message;
+      // Findings come from the collector's detectors only: a client can't forge one (D-044).
+      else if (res.event.type === "anomaly.detected") message = "anomaly.detected is emitted by the collector, not by clients";
       else if (!auth.canIngest(tok, res.event.workspace)) {
         unauthorized += 1;
         message = `not allowed to write to workspace "${res.event.workspace}"`;

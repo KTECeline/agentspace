@@ -8,6 +8,7 @@ Initial draft.
 
 - 2026-09-24 (additive, pre-release): `run.control` with `data.action` = `pause | resume | cancel` (and optional `by`). The collector emits it when an operator controls a run. See DECISIONS D-030.
 - 2026-09-24 (additive, pre-release): envelope fields `tokens_cache_read` and `tokens_cache_write` (the cached part of `tokens_in`) and `cost_source` = `reported | estimated`. The collector estimates a cost for an `llm.call` that has tokens but neither `cost_usd` nor `cost_source`. See DECISIONS D-037.
+- 2026-10-06 (additive, pre-release): `tool.call.data.arguments_hash`, a keyed hash of the call's arguments (random key per process), sent even without content capture. New event type `anomaly.detected` (`detector`, `severity` = `info | warning | critical`, `message`, numeric `evidence`, `subject_ids`), emitted only by the collector's detectors; ingest rejects it from clients. See DECISIONS D-044.
 
 - Envelope: `spec_version`, `id`, `type`, `ts`, `workspace`, `run_id`, `agent_id`, `team_id`, `parent_id`, plus optional `tokens_in`, `tokens_out`, `cost_usd`, `model`, `summary`, `attributes`.
 - 14 event types: `agent.registered`, `agent.status`, `run.started`, `run.finished`, `step.started`, `step.finished`, `llm.call`, `tool.call`, `tool.result`, `message`, `handoff`, `approval.requested`, `approval.resolved`, `error`.

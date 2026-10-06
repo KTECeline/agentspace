@@ -24,6 +24,7 @@ class EventType(
             "approval.requested",
             "approval.resolved",
             "error",
+            "anomaly.detected",
         ]
     ]
 ):
@@ -43,6 +44,7 @@ class EventType(
         "approval.requested",
         "approval.resolved",
         "error",
+        "anomaly.detected",
     ]
 
 
@@ -218,6 +220,13 @@ class ToolCallData(BaseModel):
     arguments: Annotated[Content | None, Field(description="OTel: gen_ai.tool.call.arguments.")] = (
         None
     )
+    arguments_hash: Annotated[
+        str | None,
+        Field(
+            description="Keyed hash (HMAC-SHA256, first 16 hex chars) of the canonical JSON of the call's arguments. The key is random per process, so equal hashes mean equal arguments within one process (one run) and nothing can be recovered from it. Sent even when content capture is off; used to detect repeated identical calls (DECISIONS D-044).",
+            pattern="^[0-9a-f]{16}$",
+        ),
+    ] = None
 
 
 class ToolResultData(BaseModel):
@@ -339,6 +348,38 @@ class ErrorEvent(EventBase):
     data: ErrorData
 
 
+class AnomalyDetectedData(BaseModel):
+    detector: Annotated[
+        str,
+        Field(
+            description="Which detector fired (repeated_tool_call, failure_loop, handoff_loop, tool_call_outlier, usage_outlier, ...).",
+            max_length=64,
+        ),
+    ]
+    severity: Literal["info", "warning", "critical"]
+    message: Annotated[
+        str,
+        Field(
+            description="Short, human-readable, safe to display (tool and agent names, numbers; never content).",
+            max_length=500,
+        ),
+    ]
+    evidence: Annotated[
+        dict[str, float | str | bool] | None,
+        Field(
+            description='The numbers behind the finding, e.g. {"count": 4, "baseline_p50": 1, "baseline_runs": 12}.'
+        ),
+    ] = None
+    subject_ids: Annotated[
+        list[Id] | None, Field(description="Ids of the events that triggered it.", max_length=50)
+    ] = None
+
+
+class AnomalyDetectedEvent(EventBase):
+    type: Literal["anomaly.detected"]
+    data: AnomalyDetectedData
+
+
 class AgentSpaceEvent(
     RootModel[
         AgentRegisteredEvent
@@ -356,6 +397,7 @@ class AgentSpaceEvent(
         | ApprovalRequestedEvent
         | ApprovalResolvedEvent
         | ErrorEvent
+        | AnomalyDetectedEvent
     ]
 ):
     root: Annotated[
@@ -373,7 +415,8 @@ class AgentSpaceEvent(
         | HandoffEvent
         | ApprovalRequestedEvent
         | ApprovalResolvedEvent
-        | ErrorEvent,
+        | ErrorEvent
+        | AnomalyDetectedEvent,
         Field(
             description="One AgentSpace event (spec v0.1). The `type` field selects the shape of `data`.",
             title="AgentSpaceEvent",
