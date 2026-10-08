@@ -16,6 +16,7 @@ agentspace.init(
     capture_content=False,         # send prompts, outputs and tool arguments?
     redact=None,                   # redact(field, value) -> value, applied to every content value
     hash_arguments=True,           # keyed hash of tool arguments, for repeat detection (Detectors)
+    policy=None,                   # an oversight policy (a dict or a JSON file path): Oversight policy
     auto_instrument=True,          # turn on the adapters for installed frameworks
     enabled=None,                  # False (or AGENTSPACE_DISABLED=1) makes every call a no-op
     cancel_mode="raise",           # or "flag": see Approvals, pause and cancel
@@ -54,6 +55,10 @@ agentspace.emit("llm.call", {"provider": "anthropic"}, model="claude-haiku-4-5",
 ## Approvals and controls
 
 `request_approval_sync()`, `await request_approval()`, `checkpoint()`, `await acheckpoint()`, `is_cancelled()` and `agentspace.Cancelled`: see [Approvals, pause and cancel](approvals-and-controls).
+
+## Policy
+
+`agentspace.guard_tool(name, args)` checks a tool call against the [oversight policy](policy) before it runs: it returns when the call may go ahead (allowed, or approved by a person) and raises `agentspace.PolicyDenied` when it's blocked, rejected or not approved in time. Use `await agentspace.aguard_tool(...)` in async code. The adapters call it for you (see the policy page for LangGraph and the OpenAI Agents SDK).
 
 ## Lifecycle
 

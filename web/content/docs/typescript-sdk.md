@@ -26,7 +26,7 @@ const research = agentspace.wrapAgent({ name: "Researcher" }, async (q: string) 
 
 ## init options
 
-`url`, `workspace`, `apiKey`, `captureContent`, `redact`, `enabled` (or `AGENTSPACE_DISABLED=1`), `cancelMode` (`"raise"` or `"flag"`), and the transport settings `maxQueue`, `maxBatch`, `flushIntervalMs`, `timeoutMs`, `maxContentChars`.
+`url`, `workspace`, `apiKey`, `captureContent`, `redact`, `enabled` (or `AGENTSPACE_DISABLED=1`), `cancelMode` (`"raise"` or `"flag"`), `policy` (an [oversight policy](policy) object), and the transport settings `maxQueue`, `maxBatch`, `flushIntervalMs`, `timeoutMs`, `maxContentChars`.
 
 When you emit `tool.call` yourself, add `arguments_hash: agentspace.hashArguments(args)` so the collector can spot repeated calls without seeing the arguments ([Detectors](detectors)).
 
@@ -43,6 +43,20 @@ try { /* ... */ } catch (err) {
 ```
 
 JavaScript has no `BaseException`, so use `isCancelled(err)` to rethrow from catch-all blocks. Scopes check for cancel as they start; pausing needs `await checkpoint()`. Approvals fail closed, as in Python.
+
+## Policy
+
+```ts
+try {
+  await agentspace.guardTool("deploy", { env: "prod" }); // allowed, or approved by a person
+  await deploy();
+} catch (err) {
+  if (agentspace.isPolicyDenied(err)) return `error: ${err.message}`; // written for the model
+  throw err;
+}
+```
+
+See [Oversight policy](policy).
 
 ## Lifecycle
 

@@ -36,3 +36,7 @@ If you already have a step callback, call `step_checkpoint(step_output)` from it
 **Good to know:** each crew kickoff is its own run, even inside `agentspace.run()`, because CrewAI's handlers run on its own threads. The adapter needs Python 3.13 or earlier while CrewAI does.
 
 Example: [`examples/crewai-research-desk`](https://github.com/KTECeline/agentspace/tree/main/examples/crewai-research-desk).
+
+## Policy
+
+The [oversight policy](policy) is applied automatically through CrewAI's tool-call hooks. A blocked or refused call doesn't run, and the agent is told why.

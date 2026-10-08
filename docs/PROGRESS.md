@@ -277,7 +277,14 @@ Direction approved 2026-10-06 (D-042): reposition from "a live office for agent 
   - **Docs:** `/docs/detectors`, plus the event-spec, SDK, Claude Code and self-hosting pages.
 
   Checked by hand in the browser against a collector seeded with 6 good `ship-feature` runs and a failing one. The Reviewer got three findings (repeated `run_tests`, a failure loop, and 6 tool calls against a median of 1, critical), shown at the desk, in the panel, in the replay and trace, and in Compare. Usage stayed under 2× and correctly didn't fire. Tests: collector 60 → 73, web 74 → 78, Python core 63 → 67 (plus hash assertions in three adapter suites), TS SDK 26 → 27.
-- [ ] **6.4 Oversight policy:** human-written per-tool rules (allow / review / block) plus "pause on anomaly". Anomalies can only add escalations, never remove them. Approval cards carry the evidence ("normally 8 tool calls, this run 31").
+- [x] **6.4 Oversight policy** (2026-10-08, D-045).
+  - **Spec:** `policy.schema.json` with shared cases; one TS implementation (spec-types) and one Python.
+  - **Collector:** `AGENTSPACE_POLICY_FILE`, `GET …/policy?runs=`, escalated runs on ingest responses; findings that match `on_findings.pause` pause the run (`control_by`, `control_reason`); policy reviews get evidence (`approvals.context`).
+  - **SDKs:** `init(policy=)`, `guard_tool` / `aguard_tool` (Python) and `guardTool` (TS), `PolicyDenied` with a message for the model; every refusal is an `error` event. Adapters: CrewAI (tool-call hooks) and the Claude Agent SDK (`PreToolUse` deny) automatically; LangGraph (`policy_wrapper` for `ToolNode`) and the OpenAI Agents SDK (`policy_guardrail`, `apply_policy`) opt-in, with a warning when an unchecked call matters.
+  - **UI:** **Why you're asked** on approval cards (rule, reason, escalation note, tool calls and cost against the usual with unusual values highlighted, findings); the run bar says when a detector paused the run.
+  - **Docs:** `/docs/policy`, plus the SDK, integration, self-hosting and API pages.
+
+  Checked by hand in the browser against a collector with a policy file: six good `ship-feature` runs, then a failing one. `failure_loop` paused it (shown in the run bar), the Reviewer's `deploy` review showed 7 tool calls against a usual 1 and the five findings, and approving from the card reached the SDK. Tests: Python core 141 → 144 (+4 LangGraph, +3 OpenAI Agents, +2 CrewAI, +2 Claude Agent SDK), TS SDK 27 → 34, web 78 → 83.
 - [ ] **6.5 Demo and story:** one scripted failure scenario (fail → locate → inspect → compare → pause → reject → replay) as an example and a `/demo` recording; rewrite `docs/launch/video.md`, the README tagline and the docs landing page.
 
 ### Out of scope for this phase (D-042)

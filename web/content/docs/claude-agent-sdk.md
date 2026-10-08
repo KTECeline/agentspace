@@ -13,7 +13,7 @@ async for message in track(query(prompt="...", options=options)):
     ...
 ```
 
-- `instrument_options()` adds AgentSpace's hooks and keeps yours; they run after your own hooks and never change a decision.
+- `instrument_options()` adds AgentSpace's hooks and keeps yours; they run after your own hooks. They never approve anything: they only stop a tool call when an operator cancels the run or the [oversight policy](policy) refuses it.
 - `track()` passes every message through unchanged, and records model usage and the session's billed cost.
 
 ## What you'll see
@@ -46,3 +46,7 @@ Tools not in the set are allowed without asking (`None` asks for every tool). Cl
 The PreToolUse hook is the safe point. While a run is paused, the hook waits (its timeout is 3,600 s, so a pause can outlast the SDK's 60 s default). Once it's cancelled, the hook denies the tool and stops the session. Later prompts in the same session are stopped too.
 
 Example: [`examples/claude-agent-sdk-support`](https://github.com/KTECeline/agentspace/tree/main/examples/claude-agent-sdk-support) (`--replay --approve` works offline).
+
+## Policy
+
+With `instrument_options()` (or `hooks=tracker.hooks()`), the [oversight policy](policy) is checked in the `PreToolUse` hook. A blocked or refused call is denied with the reason, and the session carries on so the agent can choose another way.

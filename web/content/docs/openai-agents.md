@@ -33,3 +33,7 @@ result = await Runner.run(agent, "Was invoice 42 paid?", hooks=ControlHooks())
 Subclass `ControlHooks` to add your own hooks (call `super()`). Controls act at safe points only: a cancel that arrives during the run's last model call lets that run finish.
 
 Example: [`examples/openai-agents-handoffs`](https://github.com/KTECeline/agentspace/tree/main/examples/openai-agents-handoffs).
+
+## Policy
+
+Trace processors can't refuse a tool call, so the [oversight policy](policy) is checked by the SDK's tool input guardrails. `apply_policy(agent)` (from `agentspace.adapters.openai_agents`) adds `policy_guardrail` to the function tools of the agent and the agents it hands off to; or pass `tool_input_guardrails=[policy_guardrail]` to `@function_tool` yourself. A refused call doesn't run, and the model gets the reason as the tool's output.

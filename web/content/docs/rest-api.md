@@ -34,6 +34,9 @@ All endpoints are JSON over HTTP on the collector (port 4800). When auth is conf
 | `POST /v1/workspaces/:ws/approvals/:id/resolve` | `{"decision": "approved" \| "rejected", "comment", "by"}`: `409` if already decided |
 | `POST /v1/workspaces/:ws/runs/:run/control` | `{"action": "pause" \| "resume" \| "cancel", "by"}` |
 | `GET /v1/workspaces/:ws/controls?runs=a,b&wait=` | the control state of those runs (the SDKs long-poll this while paused) |
+| `GET /v1/workspaces/:ws/policy?runs=a,b` | `{"policy", "escalated"}`: the collector's [policy](policy) (or `null`) and which of those runs have findings. Ingest responses list `escalated` runs too. |
+
+An approval asked by a policy carries `policy` (the rule that asked) and, once the collector has worked it out, `context` (the run's findings, tool calls and cost against the workflow's usual runs).
 
 ## Stats
 

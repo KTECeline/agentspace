@@ -27,6 +27,7 @@ Collector data lives in the `agentspace-data` volume. Released images are publis
 | `AGENTSPACE_OTLP_HOLD_MS` | `10000` | how long a span waits for its parent |
 | `AGENTSPACE_DETECTORS` | on | `off` turns the [detectors](detectors) off |
 | `AGENTSPACE_DETECTORS_FILE` | (none) | JSON that tunes or turns off single detectors ([Detectors](detectors)) |
+| `AGENTSPACE_POLICY_FILE` | (none) | the [oversight policy](policy) every SDK applies, and which findings pause runs; an invalid file stops startup |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
 `AGENTSPACE_DATABASE_URL=postgres://…` is reserved for the upcoming Postgres store and isn't supported yet.

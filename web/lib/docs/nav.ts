@@ -16,6 +16,7 @@ export const DOCS_NAV: { group: string; pages: { slug: string; title: string }[]
       { slug: "replay-and-dashboard", title: "Replay and the Costs page" },
       { slug: "debugging", title: "Debugging a run" },
       { slug: "detectors", title: "Detectors" },
+      { slug: "policy", title: "Oversight policy" },
     ],
   },
   {
