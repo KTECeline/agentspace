@@ -330,6 +330,15 @@
           "type": "string",
           "maxLength": 256,
           "description": "Who asked (operator name or 'api')."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Why, when the collector paused the run itself (a detector finding under the policy's on_findings.pause)."
+        },
+        "finding_id": {
+          "$ref": "#/$defs/Id",
+          "description": "The anomaly.detected event that caused it."
         }
       }
     },
@@ -535,6 +544,51 @@
         "timeout_s": {
           "type": "number",
           "minimum": 0
+        },
+        "policy": {
+          "type": "object",
+          "description": "Set when an oversight policy rule asked for this review (DECISIONS D-045).",
+          "required": [
+            "tool",
+            "action"
+          ],
+          "properties": {
+            "tool": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "review"
+              ]
+            },
+            "rule": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "The rule's match pattern."
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "code",
+                "collector"
+              ],
+              "description": "Which policy the rule came from."
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "escalated": {
+              "type": "boolean",
+              "description": "The rule asked for review only because the run has findings."
+            },
+            "arguments_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16}$"
+            }
+          }
         }
       }
     },

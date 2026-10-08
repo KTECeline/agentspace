@@ -220,6 +220,14 @@ export interface RunControlData {
    * Who asked (operator name or 'api').
    */
   by?: string;
+  /**
+   * Why, when the collector paused the run itself (a detector finding under the policy's on_findings.pause).
+   */
+  reason?: string;
+  /**
+   * The anomaly.detected event that caused it.
+   */
+  finding_id?: string;
 }
 export interface StepStartedData {
   /**
@@ -307,6 +315,27 @@ export interface ApprovalRequestedData {
   reason: string;
   payload?: Content;
   timeout_s?: number;
+  /**
+   * Set when an oversight policy rule asked for this review (DECISIONS D-045).
+   */
+  policy?: {
+    tool: string;
+    action: "review";
+    /**
+     * The rule's match pattern.
+     */
+    rule?: string;
+    /**
+     * Which policy the rule came from.
+     */
+    source?: "code" | "collector";
+    reason?: string;
+    /**
+     * The rule asked for review only because the run has findings.
+     */
+    escalated?: boolean;
+    arguments_hash?: string;
+  };
 }
 export interface ApprovalResolvedData {
   approval_id: Id;

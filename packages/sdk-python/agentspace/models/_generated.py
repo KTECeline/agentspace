@@ -177,6 +177,16 @@ class RunControlData(BaseModel):
     by: Annotated[
         str | None, Field(description="Who asked (operator name or 'api').", max_length=256)
     ] = None
+    reason: Annotated[
+        str | None,
+        Field(
+            description="Why, when the collector paused the run itself (a detector finding under the policy's on_findings.pause).",
+            max_length=500,
+        ),
+    ] = None
+    finding_id: Annotated[
+        Id | None, Field(description="The anomaly.detected event that caused it.")
+    ] = None
 
 
 class StepStartedData(BaseModel):
@@ -251,11 +261,34 @@ class HandoffData(BaseModel):
     reason: Annotated[str | None, Field(max_length=500)] = None
 
 
+class Policy(BaseModel):
+    tool: Annotated[str, Field(max_length=256)]
+    action: Literal["review"]
+    rule: Annotated[str | None, Field(description="The rule's match pattern.", max_length=256)] = (
+        None
+    )
+    source: Annotated[
+        Literal["code", "collector"] | None, Field(description="Which policy the rule came from.")
+    ] = None
+    reason: Annotated[str | None, Field(max_length=500)] = None
+    escalated: Annotated[
+        bool | None,
+        Field(description="The rule asked for review only because the run has findings."),
+    ] = None
+    arguments_hash: Annotated[str | None, Field(pattern="^[0-9a-f]{16}$")] = None
+
+
 class ApprovalRequestedData(BaseModel):
     approval_id: Id
     reason: Annotated[str, Field(max_length=2000)]
     payload: Content | None = None
     timeout_s: Annotated[float | None, Field(ge=0.0)] = None
+    policy: Annotated[
+        Policy | None,
+        Field(
+            description="Set when an oversight policy rule asked for this review (DECISIONS D-045)."
+        ),
+    ] = None
 
 
 class ApprovalResolvedData(BaseModel):

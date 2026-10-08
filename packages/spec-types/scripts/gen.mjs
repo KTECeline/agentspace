@@ -20,4 +20,6 @@ const ts = await compile(structuredClone(schema), "AgentSpaceEvent", {
 
 await writeFile(new URL("generated.ts", outDir), ts);
 await writeFile(new URL("schema.json", outDir), JSON.stringify(schema, null, 2) + "\n");
-console.log("spec-types: wrote src/generated.ts and src/schema.json");
+// The policy schema is copied as is (the policy types are hand-written in src/policy.ts).
+await writeFile(new URL("policy.schema.json", outDir), await readFile(fileURLToPath(new URL("spec/v0.1/policy.schema.json", root)), "utf8"));
+console.log("spec-types: wrote src/generated.ts, src/schema.json and src/policy.schema.json");

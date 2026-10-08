@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript types and JSON Schema for the AgentSpace event spec. Generated from spec/ — do not edit src/generated.ts or src/schema.json by hand.",
+  "description": "TypeScript types and JSON Schema for the AgentSpace event spec. Generated from spec/ \u2014 do not edit src/generated.ts or src/schema.json by hand.",
   "exports": {
     ".": "./src/index.ts",
-    "./schema.json": "./src/schema.json"
+    "./schema.json": "./src/schema.json",
+    "./policy": "./src/policy.ts",
+    "./policy.schema.json": "./src/policy.schema.json"
   },
   "scripts": {
     "gen": "node scripts/gen.mjs",

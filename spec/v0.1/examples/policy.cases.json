@@ -1,0 +1,1327 @@
+{
+ "evaluate": [
+  {
+   "name": "no policies: everything is allowed",
+   "policies": [],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": null,
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "no rule matches: the default (allow)",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "search",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "an exact match",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "review",
+    "rule": "deploy",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": "Production change."
+   }
+  },
+  {
+   "name": "a glob match",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "delete_customer",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": "delete_*",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": "Deletes are never automatic."
+   }
+  },
+  {
+   "name": "globs match the whole name",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "undelete_customer",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "matching is case-sensitive",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "Deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "an agent-scoped rule applies to that agent",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "send_email",
+    "agent": "support",
+    "escalated": false
+   },
+   "expect": {
+    "action": "review",
+    "rule": "send_email",
+    "source": "code",
+    "show_arguments": false,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "an agent-scoped rule skips other agents",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "send_email",
+    "agent": "billing",
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "an agent-scoped rule skips calls with no agent",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "send_email",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "on_findings does nothing in a quiet run",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "write_file",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": "write_file",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "on_findings escalates in a run with findings",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "write_file",
+    "agent": null,
+    "escalated": true
+   },
+   "expect": {
+    "action": "review",
+    "rule": "write_file",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": true,
+    "reason": null
+   }
+  },
+  {
+   "name": "on_findings never relaxes a rule",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "delete_*",
+        "action": "block",
+        "reason": "Deletes are never automatic."
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "Production change."
+       },
+       {
+        "match": "send_email",
+        "action": "review",
+        "agents": [
+         "support"
+        ],
+        "show_arguments": false
+       },
+       {
+        "match": "write_file",
+        "action": "allow",
+        "on_findings": "review"
+       },
+       {
+        "match": "run_tests",
+        "action": "review",
+        "on_findings": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "run_tests",
+    "agent": null,
+    "escalated": true
+   },
+   "expect": {
+    "action": "review",
+    "rule": "run_tests",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "within a policy the strictest matching rule wins, whatever the order",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "*",
+        "action": "review"
+       },
+       {
+        "match": "deploy*",
+        "action": "block"
+       },
+       {
+        "match": "deploy_prod",
+        "action": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy_prod",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": "deploy*",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "a matching rule overrides the policy's own default (an allowlist)",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "default": "block",
+      "tools": [
+       {
+        "match": "search",
+        "action": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "search",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": "search",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "the default applies when nothing matches",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "default": "block",
+      "tools": [
+       {
+        "match": "search",
+        "action": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "across policies the strictest wins: collector stricter than code",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "deploy",
+        "action": "allow"
+       }
+      ]
+     }
+    },
+    {
+     "source": "collector",
+     "policy": {
+      "tools": [
+       {
+        "match": "deploy",
+        "action": "block"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": "deploy",
+    "source": "collector",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "across policies the strictest wins: code stricter than collector",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "deploy",
+        "action": "review"
+       }
+      ]
+     }
+    },
+    {
+     "source": "collector",
+     "policy": {
+      "tools": [
+       {
+        "match": "deploy",
+        "action": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "review",
+    "rule": "deploy",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "another policy's allow can't override a default block",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "default": "block"
+     }
+    },
+    {
+     "source": "collector",
+     "policy": {
+      "tools": [
+       {
+        "match": "deploy",
+        "action": "allow"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "ties go to the first policy, then the first rule",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "de*",
+        "action": "review",
+        "reason": "first"
+       },
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "second"
+       }
+      ]
+     }
+    },
+    {
+     "source": "collector",
+     "policy": {
+      "tools": [
+       {
+        "match": "deploy",
+        "action": "review",
+        "reason": "third"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "deploy",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "review",
+    "rule": "de*",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": "first"
+   }
+  },
+  {
+   "name": "? matches exactly one character",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "tool_?",
+        "action": "block"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "tool_a",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": "tool_?",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "? doesn't match two",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "tool_?",
+        "action": "block"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "tool_ab",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "regex characters are literal",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "a.b+(c)",
+        "action": "block"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "axbbc",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "allow",
+    "rule": null,
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  },
+  {
+   "name": "regex characters match themselves",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "tools": [
+       {
+        "match": "a.b+(c)",
+        "action": "block"
+       }
+      ]
+     }
+    }
+   ],
+   "input": {
+    "tool": "a.b+(c)",
+    "agent": null,
+    "escalated": false
+   },
+   "expect": {
+    "action": "block",
+    "rule": "a.b+(c)",
+    "source": "code",
+    "show_arguments": true,
+    "escalated": false,
+    "reason": null
+   }
+  }
+ ],
+ "pause": [
+  {
+   "name": "no policies: never pause",
+   "policies": [],
+   "finding": {
+    "detector": "failure_loop",
+    "severity": "critical"
+   },
+   "expect": false
+  },
+  {
+   "name": "a listed detector at the default minimum (warning)",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "on_findings": {
+       "pause": [
+        "failure_loop"
+       ]
+      }
+     }
+    }
+   ],
+   "finding": {
+    "detector": "failure_loop",
+    "severity": "warning"
+   },
+   "expect": true
+  },
+  {
+   "name": "info is below the default minimum",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "on_findings": {
+       "pause": [
+        "failure_loop"
+       ]
+      }
+     }
+    }
+   ],
+   "finding": {
+    "detector": "failure_loop",
+    "severity": "info"
+   },
+   "expect": false
+  },
+  {
+   "name": "a detector that isn't listed",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "on_findings": {
+       "pause": [
+        "failure_loop"
+       ]
+      }
+     }
+    }
+   ],
+   "finding": {
+    "detector": "usage_outlier",
+    "severity": "critical"
+   },
+   "expect": false
+  },
+  {
+   "name": "* means any detector",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "on_findings": {
+       "pause": [
+        "*"
+       ],
+       "min_severity": "critical"
+      }
+     }
+    }
+   ],
+   "finding": {
+    "detector": "usage_outlier",
+    "severity": "critical"
+   },
+   "expect": true
+  },
+  {
+   "name": "min_severity is respected",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {
+      "on_findings": {
+       "pause": [
+        "*"
+       ],
+       "min_severity": "critical"
+      }
+     }
+    }
+   ],
+   "finding": {
+    "detector": "usage_outlier",
+    "severity": "warning"
+   },
+   "expect": false
+  },
+  {
+   "name": "any policy can ask for a pause",
+   "policies": [
+    {
+     "source": "code",
+     "policy": {}
+    },
+    {
+     "source": "collector",
+     "policy": {
+      "on_findings": {
+       "pause": [
+        "handoff_loop"
+       ]
+      }
+     }
+    }
+   ],
+   "finding": {
+    "detector": "handoff_loop",
+    "severity": "warning"
+   },
+   "expect": true
+  }
+ ],
+ "invalid": [
+  {
+   "name": "not an object",
+   "policy": [],
+   "path": ""
+  },
+  {
+   "name": "an unknown top-level key",
+   "policy": {
+    "rules": []
+   },
+   "path": "rules"
+  },
+  {
+   "name": "an unsupported version",
+   "policy": {
+    "version": 2
+   },
+   "path": "version"
+  },
+  {
+   "name": "a bad default",
+   "policy": {
+    "default": "deny"
+   },
+   "path": "default"
+  },
+  {
+   "name": "tools is not a list",
+   "policy": {
+    "tools": {}
+   },
+   "path": "tools"
+  },
+  {
+   "name": "a rule without match",
+   "policy": {
+    "tools": [
+     {
+      "action": "block"
+     }
+    ]
+   },
+   "path": "tools[0].match"
+  },
+  {
+   "name": "an empty match",
+   "policy": {
+    "tools": [
+     {
+      "match": "",
+      "action": "block"
+     }
+    ]
+   },
+   "path": "tools[0].match"
+  },
+  {
+   "name": "a bad action",
+   "policy": {
+    "tools": [
+     {
+      "match": "x",
+      "action": "deny"
+     }
+    ]
+   },
+   "path": "tools[0].action"
+  },
+  {
+   "name": "an unknown rule key",
+   "policy": {
+    "tools": [
+     {
+      "match": "x",
+      "action": "block",
+      "when": "always"
+     }
+    ]
+   },
+   "path": "tools[0].when"
+  },
+  {
+   "name": "an empty agents list",
+   "policy": {
+    "tools": [
+     {
+      "match": "x",
+      "action": "block",
+      "agents": []
+     }
+    ]
+   },
+   "path": "tools[0].agents"
+  },
+  {
+   "name": "a non-string agent",
+   "policy": {
+    "tools": [
+     {
+      "match": "x",
+      "action": "block",
+      "agents": [
+       1
+      ]
+     }
+    ]
+   },
+   "path": "tools[0].agents"
+  },
+  {
+   "name": "a bad on_findings action",
+   "policy": {
+    "tools": [
+     {
+      "match": "x",
+      "action": "allow",
+      "on_findings": "pause"
+     }
+    ]
+   },
+   "path": "tools[0].on_findings"
+  },
+  {
+   "name": "show_arguments must be a boolean",
+   "policy": {
+    "tools": [
+     {
+      "match": "x",
+      "action": "review",
+      "show_arguments": "yes"
+     }
+    ]
+   },
+   "path": "tools[0].show_arguments"
+  },
+  {
+   "name": "a bad pause list",
+   "policy": {
+    "on_findings": {
+     "pause": "failure_loop"
+    }
+   },
+   "path": "on_findings.pause"
+  },
+  {
+   "name": "a bad min_severity",
+   "policy": {
+    "on_findings": {
+     "min_severity": "high"
+    }
+   },
+   "path": "on_findings.min_severity"
+  },
+  {
+   "name": "an unknown on_findings key",
+   "policy": {
+    "on_findings": {
+     "resume": []
+    }
+   },
+   "path": "on_findings.resume"
+  }
+ ],
+ "valid": [
+  {},
+  {
+   "version": 1,
+   "default": "review"
+  },
+  {
+   "tools": [
+    {
+     "match": "delete_*",
+     "action": "block",
+     "reason": "Deletes are never automatic."
+    },
+    {
+     "match": "deploy",
+     "action": "review",
+     "reason": "Production change."
+    },
+    {
+     "match": "send_email",
+     "action": "review",
+     "agents": [
+      "support"
+     ],
+     "show_arguments": false
+    },
+    {
+     "match": "write_file",
+     "action": "allow",
+     "on_findings": "review"
+    },
+    {
+     "match": "run_tests",
+     "action": "review",
+     "on_findings": "allow"
+    }
+   ]
+  },
+  {
+   "on_findings": {
+    "pause": [
+     "*"
+    ],
+    "min_severity": "info"
+   }
+  }
+ ]
+}

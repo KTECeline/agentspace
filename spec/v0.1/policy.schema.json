@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentspace.dev/spec/v0.1/policy.schema.json",
+  "title": "AgentSpacePolicy",
+  "description": "Oversight policy (spec v0.1, DECISIONS D-045). Says which tools run freely, which need a person's approval and which are blocked. Semantics: within one policy, the strictest matching rule wins, and the default applies only when no rule matches; across policies (code and collector), the strictest result wins. Findings can only make a result stricter. Conformance cases: examples/policy.cases.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "default": {
+      "$ref": "#/$defs/Action",
+      "description": "Action for tools no rule matches. Default: allow."
+    },
+    "tools": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/ToolRule"
+      }
+    },
+    "on_findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the collector does when a detector finding arrives.",
+      "properties": {
+        "pause": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "description": "Detector ids whose findings pause the run, or \"*\" for any."
+        },
+        "min_severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "critical"
+          ],
+          "description": "Only findings at least this severe pause. Default: warning."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Action": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "review",
+        "block"
+      ]
+    },
+    "ToolRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "match",
+        "action"
+      ],
+      "properties": {
+        "match": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Tool name glob: * is any run of characters, ? is one character. Case-sensitive, whole name."
+        },
+        "agents": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "description": "Only these agent ids. Omitted: every agent."
+        },
+        "action": {
+          "$ref": "#/$defs/Action"
+        },
+        "on_findings": {
+          "$ref": "#/$defs/Action",
+          "description": "The action once the run has a detector finding (only ever stricter: a laxer value is ignored)."
+        },
+        "show_arguments": {
+          "type": "boolean",
+          "description": "Review: show the call's arguments (after redaction) to the person approving. Default: true."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Shown to the person approving, and to the model when the call is blocked."
+        }
+      }
+    }
+  }
+}
