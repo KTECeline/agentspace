@@ -27,6 +27,10 @@ export class FakeCollector {
   /** run_id -> "paused" | "cancelled" (returned on ingest and by GET /controls). */
   controls = new Map<string, string>();
   approvalStatusOverride: number | null = null;
+  /** Served by GET /policy (D-045); runs listed in `escalated` come back on ingest too. */
+  policy: unknown = null;
+  escalated = new Set<string>();
+  policyReads = 0;
   private server: Server;
 
   constructor() {
@@ -50,7 +54,8 @@ export class FakeCollector {
           const c = this.controls.get(e.run_id);
           if (c) controls[e.run_id] = c;
         }
-        json(200, { accepted: events.length, rejected: 0, controls });
+        const escalated = [...new Set(events.map((e) => e.run_id))].filter((r) => this.escalated.has(r));
+        json(200, { accepted: events.length, rejected: 0, controls, ...(escalated.length ? { escalated } : {}) });
       });
     });
   }
@@ -65,6 +70,11 @@ export class FakeCollector {
       while (this.approvals.get(id)?.status === "pending" && Date.now() < until) await sleep(20);
       const a = this.approvals.get(id);
       return a ? json(200, { approval_id: id, ...a }) : json(404, { error: "not found" });
+    }
+    if (url.pathname.endsWith("/policy")) {
+      this.policyReads++;
+      const runs = (url.searchParams.get("runs") ?? "").split(",").filter(Boolean);
+      return json(200, { policy: this.policy, escalated: runs.filter((r) => this.escalated.has(r)) });
     }
     if (url.pathname.endsWith("/controls")) {
       const runs = (url.searchParams.get("runs") ?? "").split(",").filter(Boolean);

@@ -10,15 +10,21 @@
  */
 import type { AgentSpaceEvent, AgentStatus, EventType } from "./spec.js";
 import { current, withCtx, type Ctx } from "./context.js";
-import { internalError } from "./log.js";
+import { internalError, warnLimited } from "./log.js";
+import { parsePolicy } from "../../spec-types/src/policy.js";
 import { Transport } from "./transport.js";
 import * as control from "./control.js";
-import { isCancelled, type ApprovalOptions, type ApprovalResult, type CancelMode, type ControlHost, type ControlState } from "./control.js";
+import { isCancelled, type ApprovalOptions, type ApprovalResult, type CancelMode, type ControlState } from "./control.js";
+import * as oversight from "./oversight.js";
+import type { GuardOptions, OversightHost, Policy, PolicyDecision } from "./oversight.js";
+import type { SourcedPolicy } from "../../spec-types/src/policy.js";
 import { isPromiseLike, newId, nowIso, slugify, truncate } from "./util.js";
 
 export type { AgentSpaceEvent, AgentStatus, EventType } from "./spec.js";
 export { hasAsyncContext } from "./context.js";
 export { Cancelled, isCancelled } from "./control.js";
+export { PolicyDenied, isPolicyDenied } from "./oversight.js";
+export type { GuardOptions, Policy, PolicyDecision, PolicyOutcome } from "./oversight.js";
 export { hashArguments } from "./hash.js";
 export type { ApprovalOptions, ApprovalResult, CancelMode, Decision } from "./control.js";
 
@@ -48,6 +54,10 @@ export interface InitOptions {
   /** What an operator's cancel does at a safe point: throw `Cancelled` ("raise", default) or
    * just flag the run (poll `runCancelled()`). */
   cancelMode?: CancelMode;
+  /** An oversight policy for tool calls (see `guardTool()` and the policy docs). Combined with
+   * the collector's; the stricter result wins. An invalid policy is logged and replaced by
+   * `{ default: "review" }` (fails closed). */
+  policy?: Policy;
 }
 
 export interface AgentOptions {
@@ -76,11 +86,22 @@ export interface EmitFields extends EnvelopeExtras {
 
 const POLL_INTERVAL_MS = 2000;
 const ACTIVE_RUN_MS = 60_000;
+/** How often the collector's policy is re-read, and how soon a failed first read is retried. */
+const POLICY_REFRESH_MS = 30_000;
+const POLICY_RETRY_MS = 10_000;
 
-class Client implements ControlHost {
+type ClientOptions = Required<Omit<InitOptions, "apiKey" | "redact" | "policy">> & Pick<InitOptions, "apiKey" | "redact" | "policy">;
+
+class Client implements OversightHost {
   readonly transport: Transport | null;
   readonly controls = new Map<string, ControlState>();
   readonly cancelAnnounced = new Set<string>();
+  /** Runs with detector findings: policy rules' on_findings apply to them. Only grows. */
+  readonly escalated = new Set<string>();
+  /** The collector's policy (null: it has none, or not fetched yet). */
+  private collectorPolicy: Policy | null = null;
+  private policyFetched = false;
+  private policyTriedAt = -Infinity;
   private activeRuns = new Map<string, number>();
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private agents = new Map<string, AgentInfo>();
@@ -89,7 +110,7 @@ class Client implements ControlHost {
   private defaultRunStart = 0;
   private closed = false;
 
-  constructor(readonly opts: Required<Omit<InitOptions, "apiKey" | "redact">> & Pick<InitOptions, "apiKey" | "redact">) {
+  constructor(readonly opts: ClientOptions) {
     this.transport = opts.enabled
       ? new Transport({
           endpoint: opts.url.replace(/\/$/, "") + "/v1/events",
@@ -101,6 +122,7 @@ class Client implements ControlHost {
           onControls: (c) => {
             for (const [runId, state] of Object.entries(c)) control.applyControl(this, runId, state);
           },
+          onEscalated: (runs) => this.applyEscalated(runs),
         })
       : null;
     if (this.transport) {
@@ -135,10 +157,61 @@ class Client implements ControlHost {
     return this.transport ? this.transport.flush(timeoutMs) : Promise.resolve(true);
   }
 
+  teamOf(agentId: string | undefined): string | null {
+    if (!agentId) return null;
+    const ctx = current().agent;
+    return ctx && ctx.agentId === agentId ? ctx.teamId : (this.agents.get(agentId)?.teamId ?? null);
+  }
+
   private async poll(): Promise<void> {
     const now = Date.now();
     for (const [rid, seen] of this.activeRuns) if (now - seen > ACTIVE_RUN_MS) this.activeRuns.delete(rid);
+    if (now - this.policyTriedAt >= POLICY_REFRESH_MS) await this.refreshPolicy();
     await control.pollControls(this, [...this.activeRuns.keys()].slice(0, 50));
+  }
+
+  // ---- policy (D-045) ----
+
+  private applyEscalated(runs: unknown[]): void {
+    for (const r of runs) if (typeof r === "string") this.escalated.add(r);
+  }
+
+  /** Code first, then the collector's: the order ties are broken in. */
+  policies(): SourcedPolicy[] {
+    const out: SourcedPolicy[] = [];
+    if (this.opts.policy) out.push({ source: "code", policy: this.opts.policy });
+    if (this.collectorPolicy) out.push({ source: "collector", policy: this.collectorPolicy });
+    return out;
+  }
+
+  /** Fetch the collector's policy and the escalated runs among active ones. Never throws. */
+  async refreshPolicy(timeoutMs = 2000): Promise<boolean> {
+    this.policyTriedAt = Date.now();
+    if (!this.enabled) return false;
+    const runs = [...this.activeRuns.keys()].slice(0, 100).map(encodeURIComponent).join(",");
+    try {
+      const { status, body } = await control.api(this, "GET", `/v1/workspaces/${encodeURIComponent(this.workspace)}/policy?runs=${runs}`, timeoutMs);
+      if (status !== 200 || !body || typeof body !== "object") return false;
+      const b = body as { policy?: unknown; escalated?: unknown };
+      if (b.policy === null || b.policy === undefined) this.collectorPolicy = null;
+      else {
+        const parsed = parsePolicy(b.policy);
+        // A newer collector may know settings we don't: keep the last good one.
+        if (parsed.ok) this.collectorPolicy = parsed.policy;
+        else warnLimited("policy-invalid", `ignoring the collector's policy: ${parsed.errors.slice(0, 3).map((e) => `${e.path} ${e.message}`).join("; ")}`);
+      }
+      this.policyFetched = true;
+      if (Array.isArray(b.escalated)) this.applyEscalated(b.escalated);
+      return true;
+    } catch (err) {
+      if (!(err instanceof control.CollectorError)) internalError("refreshPolicy", err);
+      return false;
+    }
+  }
+
+  /** Before the first guarded tool call, fetch the collector's policy once (1 s at most). */
+  async ensurePolicy(): Promise<void> {
+    if (!this.policyFetched && Date.now() - this.policyTriedAt > POLICY_RETRY_MS) await this.refreshPolicy(1000);
   }
 
   /** Like content(), but ignores captureContent (used for approval payloads a person reviews). */
@@ -277,6 +350,7 @@ export function init(options: InitOptions = {}): void {
       timeoutMs: options.timeoutMs ?? 2000,
       maxContentChars: options.maxContentChars ?? 16_000,
       cancelMode: options.cancelMode ?? "raise",
+      policy: options.policy === undefined ? undefined : oversight.loadPolicy(options.policy),
     });
     if (previous) void previous.shutdown(500);
     installExitHook();
@@ -518,6 +592,16 @@ export async function checkpoint(runId?: string): Promise<boolean> {
     internalError("checkpoint", err);
     return true;
   }
+}
+
+/**
+ * Check a tool call against the oversight policy before it runs (D-045). Resolves with the
+ * decision when the call may go ahead (allowed, or approved by a person). Throws `PolicyDenied`
+ * when it's blocked, rejected or not approved in time: its message is written for the model, so
+ * hand it back as the tool's error. A review waits for a person (default up to 5 minutes).
+ */
+export async function guardTool(tool: string, args?: unknown, opts?: GuardOptions): Promise<PolicyDecision> {
+  return oversight.guardTool(client, tool, args, opts);
 }
 
 /** True once an operator cancelled the current (or given) run. */

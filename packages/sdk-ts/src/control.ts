@@ -68,9 +68,9 @@ export interface ControlHost {
 export const POLL_WAIT_S = 25;
 const MAX_NETWORK_FAILURES = 3;
 
-class CollectorError extends Error {}
+export class CollectorError extends Error {}
 
-async function api(host: ControlHost, method: string, path: string, timeoutMs: number, body?: unknown): Promise<{ status: number; body: unknown }> {
+export async function api(host: ControlHost, method: string, path: string, timeoutMs: number, body?: unknown): Promise<{ status: number; body: unknown }> {
   const headers: Record<string, string> = { accept: "application/json", "user-agent": "agentspace-ts" };
   if (body !== undefined) headers["content-type"] = "application/json";
   if (host.apiKey) headers.authorization = `Bearer ${host.apiKey}`;
@@ -105,7 +105,8 @@ const sleep = (ms: number) =>
 // Approvals
 // ---------------------------------------------------------------------------
 
-export async function requestApproval(host: ControlHost | null, reason: string, payload: unknown, opts: ApprovalOptions = {}): Promise<ApprovalResult> {
+/** `policy` is set by guardTool: which policy rule asked (D-045). */
+export async function requestApproval(host: ControlHost | null, reason: string, payload: unknown, opts: ApprovalOptions = {}, policy?: Record<string, unknown>): Promise<ApprovalResult> {
   const approvalId = newId();
   const result = (decision: Decision, extra: Partial<ApprovalResult> = {}): ApprovalResult => ({ decision, approvalId, approved: decision === "approved", ...extra });
   if (!host || !host.enabled) {
@@ -133,6 +134,7 @@ export async function requestApproval(host: ControlHost | null, reason: string, 
         // but it still goes through your redact hook.
         payload: host.redactValue("approval.payload", payload),
         timeout_s: timeoutMs / 1000,
+        policy,
       },
       { ...who, summary: truncate(`needs approval: ${reason}`, 500) },
     );

@@ -54,6 +54,8 @@ export interface TransportOptions {
   timeoutMs: number;
   /** Called with the run controls (paused / cancelled) the collector returns on ingest. */
   onControls?: (controls: Record<string, string>) => void;
+  /** Called with the runs the collector says have detector findings (D-045). */
+  onEscalated?: (runs: string[]) => void;
 }
 
 const MAX_BACKOFF_MS = 10_000;
@@ -154,9 +156,10 @@ export class Transport {
         this.markUp();
         let rejected = 0;
         try {
-          const out = (await res.json()) as { rejected?: number; controls?: Record<string, string> };
+          const out = (await res.json()) as { rejected?: number; controls?: Record<string, string>; escalated?: string[] };
           rejected = Number(out.rejected ?? 0);
           if (out.controls && this.opts.onControls) this.opts.onControls(out.controls);
+          if (Array.isArray(out.escalated) && this.opts.onEscalated) this.opts.onEscalated(out.escalated);
         } catch {
           // ignore
         }
