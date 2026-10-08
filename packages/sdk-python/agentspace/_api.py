@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import inspect
+import json
 import os
 import time
 import traceback
@@ -48,6 +49,7 @@ def init(
     capture_content: bool = False,
     redact: RedactHook | None = None,
     hash_arguments: bool = True,
+    policy: dict[str, Any] | str | os.PathLike[str] | None = None,
     auto_instrument: bool = True,
     enabled: bool | None = None,
     cancel_mode: Literal["raise", "flag"] = "raise",
@@ -66,6 +68,10 @@ def init(
         hash_arguments: Send a keyed hash of each tool call's arguments (not the arguments) so
             the collector can spot an agent repeating the same call. The key is random per
             process, so the hash reveals nothing. Set False to send no hash.
+        policy: An oversight policy (a dict, or the path of a JSON file) for tool calls: which run
+            freely, which need a person's approval, which are blocked. Combined with the
+            collector's policy; the stricter result wins. See docs/policy. An invalid policy is
+            logged and replaced by ``{"default": "review"}`` (fails closed).
         auto_instrument: Turn on adapters for installed frameworks (e.g. LangGraph).
         enabled: Set False (or env ``AGENTSPACE_DISABLED=1``) to make every call a no-op.
         cancel_mode: What an operator's Cancel does. ``"raise"`` (default) raises
@@ -85,6 +91,7 @@ def init(
             capture_content=capture_content,
             redact=redact,
             hash_arguments=hash_arguments,
+            policy=_load_policy(policy),
             enabled=enabled,
             cancel_mode="flag" if cancel_mode == "flag" else "raise",
             **{k: v for k, v in options.items() if k in _CONFIG_OPTIONS},
@@ -106,6 +113,34 @@ def init(
     except Exception as exc:
         internal_error("init", exc)
         return None
+
+
+def _load_policy(policy: dict[str, Any] | str | os.PathLike[str] | None) -> dict[str, Any] | None:
+    """Validate a code policy. Anything wrong fails closed: every tool call then needs review."""
+    if policy is None:
+        return None
+    from agentspace._policy import parse_policy
+
+    try:
+        raw: Any = policy
+        if not isinstance(policy, dict):
+            with open(policy, encoding="utf-8") as f:
+                raw = json.load(f)
+        parsed, errors = parse_policy(raw)
+    except Exception as exc:
+        parsed, errors = None, [("", f"can't read it: {exc!r}")]
+    if parsed is None:
+        logger.error(
+            "agentspace: invalid policy, so every tool call will need review: %s",
+            "; ".join(f"{path or '(top)'} {msg}" for path, msg in errors),
+        )
+        return {"default": "review"}
+    if (parsed.get("on_findings") or {}).get("pause"):
+        logger.warning(
+            "agentspace: on_findings.pause only works in the collector's policy "
+            "(AGENTSPACE_POLICY_FILE); it's ignored in code"
+        )
+    return parsed
 
 
 _CONFIG_OPTIONS = {"max_queue", "max_batch", "flush_interval", "timeout", "max_content_chars"}

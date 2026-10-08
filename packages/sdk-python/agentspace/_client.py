@@ -13,11 +13,14 @@ from typing import Any
 
 from agentspace._context import current_agent, current_run, current_step
 from agentspace._hash import hash_arguments
-from agentspace._log import internal_error
+from agentspace._log import internal_error, warn_limited
 from agentspace._transport import Transport
 from agentspace._util import new_id, now_iso, truncate
 
 SPEC_VERSION = "0.1"
+#: How often the collector's policy is re-read, and how soon a failed first read is retried.
+POLICY_REFRESH_S = 30.0
+POLICY_RETRY_S = 10.0
 
 #: ``redact(field, value) -> value``. ``field`` names where the content came from, e.g.
 #: ``"llm.input"`` or ``"tool.arguments"``. Return ``None`` to drop the value.
@@ -62,6 +65,8 @@ class Config:
     redact: RedactHook | None = None
     #: Send a keyed hash of tool arguments (never the arguments) so repeats can be detected.
     hash_arguments: bool = True
+    #: The oversight policy given in code (validated), or None (D-045).
+    policy: dict[str, Any] | None = None
     max_content_chars: int = 16_000
     max_queue: int = 10_000
     max_batch: int = 100
@@ -92,8 +97,15 @@ class Client:
         self.controls: dict[str, str] = {}
         self.cancel_announced: set[str] = set()
         self._active_runs: dict[str, float] = {}  # run_id -> last event time (monotonic)
+        #: The collector's policy, from GET .../policy (None: it has none, or not fetched yet).
+        self.collector_policy: dict[str, Any] | None = None
+        self.policy_fetched = False
+        self._policy_tried_at = -1e9
+        #: Runs with detector findings: policy rules' on_findings apply to them. Only grows.
+        self.escalated: set[str] = set()
         if self.transport is not None:
             self.transport.on_controls = self._apply_controls
+            self.transport.on_escalated = self._apply_escalated
             self.transport.poll = self.poll_controls
         self._agents: dict[str, AgentInfo] = {}
         self._registered: set[tuple[str, str]] = set()
@@ -215,6 +227,62 @@ class Client:
             if state in ("paused", "cancelled") and self.controls.get(run_id) != "cancelled":
                 self.controls[run_id] = state
 
+    def _apply_escalated(self, runs: list[str]) -> None:
+        self.escalated.update(r for r in runs if isinstance(r, str))
+
+    # ---- policy (D-045) ----
+
+    def policies(self) -> list[tuple[str, dict[str, Any]]]:
+        """Code first, then the collector's: the order ties are broken in."""
+        out: list[tuple[str, dict[str, Any]]] = []
+        if self.config.policy is not None:
+            out.append(("code", self.config.policy))
+        if self.collector_policy is not None:
+            out.append(("collector", self.collector_policy))
+        return out
+
+    def refresh_policy(self, timeout: float = 2.0) -> bool:
+        """Fetch the collector's policy and the escalated runs among active ones. Never raises."""
+        from agentspace._control import CollectorError, api
+        from agentspace._policy import parse_policy
+
+        self._policy_tried_at = time.monotonic()
+        if self.transport is None:
+            return False
+        import urllib.parse
+
+        ws = urllib.parse.quote(self.config.workspace, safe="")
+        runs = urllib.parse.quote(",".join(list(self._active_runs)[:100]), safe=",")
+        try:
+            status, body = api(self, "GET", f"/v1/workspaces/{ws}/policy?runs={runs}", timeout)
+        except CollectorError:
+            return False
+        except Exception as exc:  # pragma: no cover - defensive
+            internal_error("refresh_policy", exc)
+            return False
+        if status != 200 or not isinstance(body, dict):
+            return False
+        raw = body.get("policy")
+        if raw is None:
+            self.collector_policy = None
+        else:
+            policy, errors = parse_policy(raw)
+            if policy is None:
+                # A newer collector may know settings we don't: keep the last good one.
+                warn_limited(
+                    "policy-invalid", "agentspace: ignoring the collector's policy: %s", errors[:3]
+                )
+            else:
+                self.collector_policy = policy
+        self.policy_fetched = True
+        self._apply_escalated(body.get("escalated") or [])
+        return True
+
+    def ensure_policy(self) -> None:
+        """Before the first guarded tool call, fetch the collector's policy once (1 s at most)."""
+        if not self.policy_fetched and time.monotonic() - self._policy_tried_at > POLICY_RETRY_S:
+            self.refresh_policy(timeout=1.0)
+
     def poll_controls(self) -> None:
         """Ask the collector about runs that were active in the last minute (sender thread)."""
         from agentspace._control import CollectorError, api
@@ -223,6 +291,8 @@ class Client:
         for rid, seen in list(self._active_runs.items()):
             if now - seen > 60:
                 self._active_runs.pop(rid, None)
+        if now - self._policy_tried_at >= POLICY_REFRESH_S:
+            self.refresh_policy()
         runs = list(self._active_runs)[:50]
         if not runs:
             return

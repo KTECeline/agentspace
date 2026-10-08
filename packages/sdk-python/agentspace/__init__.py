@@ -29,19 +29,23 @@ from agentspace._control import (
     request_approval_sync,
 )
 from agentspace._hash import hash_arguments
+from agentspace._oversight import PolicyDenied, aguard_tool, guard_tool
 
 __version__ = "0.1.0.dev0"
 
 __all__ = [
     "ApprovalResult",
     "Cancelled",
+    "PolicyDenied",
     "__version__",
     "acheckpoint",
     "agent",
+    "aguard_tool",
     "checkpoint",
     "emit",
     "flush",
     "get_client",
+    "guard_tool",
     "handoff",
     "hash_arguments",
     "init",

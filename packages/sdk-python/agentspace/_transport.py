@@ -59,6 +59,8 @@ class Transport:
 
         #: Called with the ingest response's "controls" ({run_id: "paused" | "cancelled"}).
         self.on_controls: Callable[[dict[str, str]], None] | None = None
+        #: Called with the ingest response's "escalated" (runs with detector findings, D-045).
+        self.on_escalated: Callable[[list[str]], None] | None = None
         #: Called every ``poll_interval`` seconds from the sender thread (control polling).
         self.poll: Callable[[], None] | None = None
         self.poll_interval = 2.0
@@ -188,6 +190,9 @@ class Transport:
             controls = body.get("controls")
             if controls and self.on_controls is not None:
                 self.on_controls(controls)
+            escalated = body.get("escalated")
+            if escalated and self.on_escalated is not None:
+                self.on_escalated(escalated)
         self.rejected += rejected
         self.sent += n - rejected
         if rejected:

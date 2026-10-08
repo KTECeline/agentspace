@@ -58,6 +58,12 @@ class FakeCollector:
         self.closing = False
         #: Called per ingested event; may return a control ("paused"/"cancelled") for its run.
         self.auto_control: Any = None
+        #: Served by GET .../policy (D-045), and runs reported as escalated by findings.
+        self.policy: dict[str, Any] | None = None
+        self.escalated: set[str] = set()
+        self.policy_requests = 0
+        #: Called per approval.requested event; may return a decision to resolve it at once.
+        self.on_approval: Any = None
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -84,8 +90,13 @@ class FakeCollector:
                         outer.controls[e["run_id"]] = action
                     if e["type"] == "approval.requested":
                         outer.approvals[e["data"]["approval_id"]] = {"status": "pending"}
+                        if outer.on_approval and (decision := outer.on_approval(e)):
+                            outer.resolve(e["data"]["approval_id"], *decision)
                 controls = {r: outer.controls[r] for r in runs if r in outer.controls}
-                self._json(200, {"accepted": len(events), "rejected": 0, "controls": controls})
+                body = {"accepted": len(events), "rejected": 0, "controls": controls}
+                if escalated := sorted(runs & outer.escalated):
+                    body["escalated"] = escalated
+                self._json(200, body)
 
             def do_GET(self) -> None:
                 url = urllib.parse.urlparse(self.path)
@@ -108,6 +119,11 @@ class FakeCollector:
                         time.sleep(0.02)
                     a = outer.approvals.get(aid)
                     self._json(200 if a else 404, a or {"error": "not found"})
+                elif url.path.endswith("/policy"):
+                    outer.policy_requests += 1
+                    runs = q.get("runs", [""])[0].split(",")
+                    escalated = [r for r in runs if r in outer.escalated]
+                    self._json(200, {"policy": outer.policy, "escalated": escalated})
                 elif url.path.endswith("/controls"):
                     runs = q.get("runs", [""])[0].split(",")
                     before = {r: outer.controls.get(r) for r in runs}
@@ -131,6 +147,7 @@ class FakeCollector:
         self._thread.start()
 
     def resolve(self, approval_id: str, decision: str, comment: str | None = None) -> None:
+        """Decide an approval as an operator would."""
         self.approvals[approval_id] = {
             "status": decision,
             "comment": comment,

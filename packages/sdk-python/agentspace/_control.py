@@ -113,6 +113,7 @@ def request_approval_sync(
     run_id: str | None = None,
     agent_id: str | None = None,
     team_id: str | None = None,
+    policy: dict[str, Any] | None = None,
 ) -> ApprovalResult:
     """Ask a person to approve something in the office and block until they decide.
 
@@ -153,6 +154,8 @@ def request_approval_sync(
                 # capture_content, but it still goes through your redaction hook.
                 "payload": client.redact_value("approval.payload", payload),
                 "timeout_s": timeout,
+                # Set by guard_tool: which policy rule asked (D-045).
+                "policy": policy,
             },
             summary=truncate(f"needs approval: {reason}", 500),
             **who,
