@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Box, ChartColumn, Eye, GitCompareArrows, History, KeyRound, LayoutGrid, Radio, RefreshCw } from "lucide-react";
 import type { RunState } from "@agentspace/spec-types";
 import { formatDuration, formatTokens } from "@/lib/format";
+import { pausedBy } from "@/lib/oversight";
 import { latestRun } from "@/lib/state";
 import { useOffice, type Connection } from "@/lib/store";
 import { useSource, type SourceConfig } from "@/lib/useSource";
@@ -297,6 +298,7 @@ function RunSummary({ run, replayHref }: { run: RunState; replayHref?: string })
   const paused = run.status === "running" && run.control === "paused";
   const status = paused ? "blocked" : run.status === "running" ? "thinking" : run.status === "ok" ? "done" : run.status === "cancelled" ? "waiting" : "error";
   const label = paused ? "paused" : run.status;
+  const why = run.status === "running" ? pausedBy(run) : null;
   return (
     <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
     <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="Latest run">
@@ -322,6 +324,11 @@ function RunSummary({ run, replayHref }: { run: RunState; replayHref?: string })
         <History aria-hidden className="size-4" />
         Replay
       </a>
+    )}
+    {why && (
+      <p role="status" data-status="blocked" className="basis-full text-sm text-[var(--st-fg)]">
+        {why}
+      </p>
     )}
     </div>
   );

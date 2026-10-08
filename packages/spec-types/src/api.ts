@@ -103,7 +103,8 @@ export interface ApprovalContext {
   /** The asking agent's tool calls in this run so far, and its median over the workflow's recent successful runs. */
   agent_tool_calls: number;
   baseline_tool_calls_p50: number | null;
-  /** How often this tool was called in the run so far (this call included). */
+  /** `tool.call` events for this tool in the run so far. The call under review counts only if it was
+   * recorded before the review was asked (the Claude Agent SDK adapter does; guard_tool alone doesn't). */
   tool_calls: number;
   run_cost_usd: number;
   baseline_cost_p50: number | null;

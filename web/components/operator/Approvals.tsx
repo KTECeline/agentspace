@@ -1,10 +1,11 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Check, Inbox, Loader2, X } from "lucide-react";
+import { Check, Inbox, Loader2, ShieldAlert, X } from "lucide-react";
 import type { ApprovalState } from "@agentspace/spec-types";
 import { actionError, resolveApproval } from "@/lib/collector";
 import { formatDuration, timeAgo } from "@/lib/format";
+import { approvalWhy } from "@/lib/oversight";
 import { useCanOperate, useOffice } from "@/lib/store";
 import { useNow } from "@/lib/useNow";
 
@@ -132,6 +133,8 @@ export function ApprovalCard({ approval: a, showAgent = true }: { approval: Appr
       </p>
       {a.comment && !pending && <p className="rounded-md bg-surface-2 px-3 py-2 text-sm">“{a.comment}”</p>}
 
+      <WhyAsked approval={a} />
+
       {publicMode ? (
         <p className="text-sm text-muted">Details are hidden in this read-only office.</p>
       ) : (
@@ -187,6 +190,53 @@ export function ApprovalCard({ approval: a, showAgent = true }: { approval: Appr
         </div>
       )}
     </article>
+  );
+}
+
+/** Which policy rule asked, and the run so far against the workflow's usual runs (D-045). */
+function WhyAsked({ approval }: { approval: ApprovalState }) {
+  const why = approvalWhy(approval);
+  if (!why) return null;
+  return (
+    <section aria-label="Why you're asked" className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm">
+      <p className="flex items-start gap-1.5">
+        <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
+        <span className="min-w-0">
+          <span className="font-medium">{why.rule}</span>
+          {why.reason && <span className="text-muted"> · {why.reason}</span>}
+        </span>
+      </p>
+      {why.escalated && (
+        <p data-status="using_tool" className="rounded-md bg-[var(--st-bg)] px-2 py-1 text-xs font-medium text-[var(--st-fg)]">
+          Asked because this run has detector findings.
+        </p>
+      )}
+      {why.loading ? (
+        <p className="text-xs text-muted">Gathering evidence…</p>
+      ) : (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+          {why.lines.map((l) => (
+            <div key={l.label} className="contents" data-status={l.unusual ? "using_tool" : undefined}>
+              <dt className="text-muted">{l.label}</dt>
+              <dd className={`min-w-0 break-words font-mono tabular-nums ${l.unusual ? "font-semibold text-[var(--st-fg)]" : ""}`}>
+                {l.value}
+                {l.unusual && <span className="sr-only"> (unusual)</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {why.findings.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs" aria-label="Findings in this run">
+          {why.findings.map((f, i) => (
+            <li key={i} data-status={f.severity === "critical" ? "error" : "using_tool"} className="rounded-md bg-[var(--st-bg)] px-2 py-1 text-[var(--st-fg)]">
+              {f.message}
+              <span className="text-muted"> · {f.detector.replace(/_/g, " ")}{f.severity === "critical" ? " · critical" : ""}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
