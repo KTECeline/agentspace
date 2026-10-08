@@ -41,6 +41,11 @@ describe("approvalWhy", () => {
     expect(why.lines[0]).toEqual({ label: "Tool calls by this agent", value: "31", unusual: false });
     expect(why.lines.at(-1)!.value).toBe("no earlier successful runs yet");
   });
+
+  it("leaves out cost when nothing in the run or its baseline is priced", () => {
+    const why = approvalWhy({ policy, context: { ...context, run_cost_usd: 0, baseline_cost_p50: 0 } })!;
+    expect(why.lines.map((l) => l.label)).not.toContain("Run cost so far");
+  });
 });
 
 describe("pausedBy", () => {

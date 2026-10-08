@@ -112,6 +112,9 @@ jobs:
         include:
           - example: langgraph-dev-team
             args: --fake --runs 2 --latency 0
+          # The failure story: with no collector there's no policy, so nothing pauses or blocks.
+          - example: langgraph-dev-team
+            args: --story --baseline 2 --latency 0
           - example: crewai-research-desk
             args: --fake --latency 0
           - example: openai-agents-handoffs

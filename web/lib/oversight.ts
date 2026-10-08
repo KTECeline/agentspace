@@ -42,7 +42,8 @@ export function approvalWhy(a: Pick<ApprovalState, "policy" | "context">): Appro
       unusual: base && unusual(c.agent_tool_calls, c.baseline_tool_calls_p50),
     });
     lines.push({ label: `${p.tool} calls so far`, value: count(c.tool_calls), unusual: false });
-    lines.push({
+    const priced = c.run_cost_usd > 0 || (c.baseline_cost_p50 ?? 0) > 0;
+    if (priced) lines.push({
       label: "Run cost so far",
       value: `${formatCost(c.run_cost_usd)}${base ? usually(c.baseline_cost_p50, formatCost) : ""}`,
       unusual: base && c.baseline_cost_p50 != null && c.baseline_cost_p50 > 0 && c.run_cost_usd >= UNUSUAL_RATIO * c.baseline_cost_p50,

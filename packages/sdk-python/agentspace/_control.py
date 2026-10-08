@@ -389,8 +389,8 @@ async def acheckpoint(run_id: str | None = None) -> bool:
 
 
 def _wait_while_paused(client: Client, rid: str, who: dict[str, Any] | None = None) -> None:
-    _show("blocked", "paused by an operator", who)
-    logger.info("agentspace: run %s paused by an operator; waiting to resume", rid)
+    _show("blocked", "run paused (resume it in the office)", who)
+    logger.info("agentspace: run %s is paused; waiting to resume", rid)
     run = urllib.parse.quote(rid, safe="")
     path = f"/v1/workspaces/{_ws(client)}/controls?runs={run}&wait={POLL_WAIT_S}"
     while client.controls.get(rid) == "paused":

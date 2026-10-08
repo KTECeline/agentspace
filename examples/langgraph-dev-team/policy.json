@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "match": "write_file",
+      "action": "allow",
+      "on_findings": "review",
+      "reason": "This run has findings: a person checks code changes before they're written."
+    }
+  ],
+  "on_findings": { "pause": ["failure_loop"], "min_severity": "warning" }
+}

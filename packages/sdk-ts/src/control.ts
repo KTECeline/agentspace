@@ -224,7 +224,7 @@ export async function checkpoint(host: ControlHost | null, runId?: string, who?:
 }
 
 async function waitWhilePaused(host: ControlHost, runId: string, who?: Record<string, unknown>): Promise<void> {
-  announce(host, "blocked", "paused by an operator", who);
+  announce(host, "blocked", "run paused (resume it in the office)", who);
   const path = `/v1/workspaces/${ws(host)}/controls?runs=${encodeURIComponent(runId)}&wait=${POLL_WAIT_S}`;
   while (host.controls.get(runId) === "paused") {
     try {

@@ -3,7 +3,7 @@ PY := packages/sdk-python
 UV := cd $(PY) && VIRTUAL_ENV= uv
 SCHEMA := spec/v0.1/event.schema.json
 
-.PHONY: install gen-types lint typecheck test test-py test-ts dev demo demo-check up down check-generated record
+.PHONY: install gen-types lint typecheck test test-py test-ts dev demo demo-story demo-check up down check-generated record
 
 install: ## Install all JS and Python dependencies
 	pnpm install
@@ -49,6 +49,12 @@ down:
 
 demo: up ## Start everything and run the example with the fake model
 	cd examples/langgraph-dev-team && VIRTUAL_ENV= uv run python main.py --fake
+
+STORY_COMPOSE = -f docker-compose.yml -f examples/langgraph-dev-team/compose.story.yml
+
+demo-story: ## The failure story: a collector with the story policy, 5 good runs, then one that goes wrong
+	docker compose $(STORY_COMPOSE) up -d --build
+	cd examples/langgraph-dev-team && VIRTUAL_ENV= uv run python main.py --story
 
 record: ## Save the latest finished run as the /demo recording (RUN=<run_id> to pick one)
 	node scripts/record.mjs $(if $(RUN),--run $(RUN),)

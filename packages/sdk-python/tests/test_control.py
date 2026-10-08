@@ -172,7 +172,7 @@ def test_pause_blocks_until_resumed(collector: FakeCollector) -> None:
     details = [
         (e["data"]["status"], e["data"].get("detail")) for e in collector.of_type("agent.status")
     ]
-    assert ("blocked", "paused by an operator") in details
+    assert ("blocked", "run paused (resume it in the office)") in details
 
 
 def test_pause_then_cancel(collector: FakeCollector) -> None:

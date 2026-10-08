@@ -52,8 +52,9 @@ from agentspace._context import current_run
 from agentspace._control import ApprovalResult, Cancelled, adapter_checkpoint
 from agentspace._control import request_approval_sync as _request_approval_sync
 from agentspace._log import internal_error, warn_limited
-from agentspace._oversight import PolicyDenied, aguard_tool, guard_tool
-from agentspace._policy import evaluate_policy
+from agentspace._oversight import PolicyDenied, aguard_tool
+from agentspace._oversight import guard_tool as _guard_tool
+from agentspace._policy import PolicyDecision, evaluate_policy
 from agentspace._util import slugify, truncate
 
 if TYPE_CHECKING:
@@ -532,7 +533,9 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
             self._checkpoint(parent)
             tool_name = str(kwargs.get("name") or (serialized or {}).get("name") or "tool")
             call_id = str(kwargs.get("tool_call_id") or run_id.hex)
-            if not _guarded.get():
+            if _guarded_next.get() == tool_name:
+                _guarded_next.set(None)  # checked by guard_tool() just before this call
+            elif not _guarded.get():
                 self._warn_unguarded(parent, tool_name)
             node = _Node(
                 parent.run,
@@ -725,6 +728,10 @@ def request_approval_sync(
 
 #: Set while a tool runs after ``policy_wrapper`` checked it.
 _guarded: ContextVar[bool] = ContextVar("agentspace_langgraph_guarded", default=False)
+#: The tool ``guard_tool()`` just allowed: its next start isn't "unchecked".
+_guarded_next: ContextVar[str | None] = ContextVar(
+    "agentspace_langgraph_guarded_next", default=None
+)
 
 
 def _call_of(request: Any) -> tuple[str, Any, str]:
@@ -755,7 +762,7 @@ def policy_wrapper(request: Any, execute: Callable[[Any], Any]) -> Any:
     name, args, _ = _call_of(request)
     ctx = current_context() or (None, None, None)
     try:
-        guard_tool(name, args, run_id=ctx[0], agent_id=ctx[1], team_id=ctx[2])
+        _guard_tool(name, args, run_id=ctx[0], agent_id=ctx[1], team_id=ctx[2])
     except PolicyDenied as denied:
         return _refused(request, denied)
     token = _guarded.set(True)
@@ -778,6 +785,22 @@ async def apolicy_wrapper(request: Any, execute: Callable[[Any], Awaitable[Any]]
         return await execute(request)
     finally:
         _guarded.reset(token)
+
+
+def guard_tool(tool: str, arguments: Any = None, *, timeout: float = 300.0) -> PolicyDecision:
+    """:func:`agentspace.guard_tool` for your own tool loop inside a graph node: the check (and
+    any review) is attached to that node's agent and run. Raises ``PolicyDenied`` like the original.
+    """
+    ctx = current_context()
+    if ctx is None:
+        decision = _guard_tool(tool, arguments, timeout=timeout)
+    else:
+        run_id, agent_id, team_id = ctx
+        decision = _guard_tool(
+            tool, arguments, timeout=timeout, run_id=run_id, agent_id=agent_id, team_id=team_id
+        )
+    _guarded_next.set(tool)
+    return decision
 
 
 def get_handler() -> AgentSpaceCallbackHandler:

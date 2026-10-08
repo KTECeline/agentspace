@@ -143,7 +143,7 @@ describe("pause / resume / cancel", () => {
     );
     await agentspace.flush();
     const details = c.ofType("agent.status").map((e) => [e.data.status, e.data.detail]);
-    expect(details).toContainEqual(["blocked", "paused by an operator"]);
+    expect(details).toContainEqual(["blocked", "run paused (resume it in the office)"]);
     expect(details).toContainEqual(["thinking", "resumed"]);
     expect(c.ofType("run.finished").map((e) => e.data.status)).toEqual(["ok"]);
   });

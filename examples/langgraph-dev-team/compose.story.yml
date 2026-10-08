@@ -1,0 +1,9 @@
+# The failure story's collector policy (examples/langgraph-dev-team/README.md):
+#   docker compose -f docker-compose.yml -f examples/langgraph-dev-team/compose.story.yml up -d
+# Paths are relative to the repo root (the first file's directory).
+services:
+  collector:
+    environment:
+      AGENTSPACE_POLICY_FILE: /etc/agentspace/policy.json
+    volumes:
+      - ./examples/langgraph-dev-team/policy.json:/etc/agentspace/policy.json:ro

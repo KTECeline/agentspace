@@ -57,7 +57,7 @@ The SDK checks a call just before the tool runs. Allowed calls cost a local chec
 | Your own code (TypeScript) | `await agentspace.guardTool(name, args)`; it throws `PolicyDenied` (`isPolicyDenied(err)`) |
 | CrewAI | automatic, through CrewAI's tool-call hooks |
 | Claude Agent SDK | automatic in the `PreToolUse` hook that `instrument_options()` adds; a refusal is a `deny` with the reason |
-| LangGraph | `ToolNode(tools, wrap_tool_call=policy_wrapper, awrap_tool_call=apolicy_wrapper)`; a refusal becomes an error `ToolMessage` |
+| LangGraph | `ToolNode(tools, wrap_tool_call=policy_wrapper, awrap_tool_call=apolicy_wrapper)`; a refusal becomes an error `ToolMessage`. In your own tool loop, call `agentspace.adapters.langgraph.guard_tool(name, args)` before the tool (it's attached to the node's agent) |
 | OpenAI Agents SDK | `apply_policy(agent)` adds `policy_guardrail` to the function tools of the agent and the agents it hands off to; a refusal is the tool's output |
 
 LangGraph callbacks and OpenAI Agents trace processors can watch a tool call but can't refuse it, which is why those two need the line above. If the policy has a say about a call that didn't go through it, the SDK logs a warning (once an hour per tool) instead of failing silently.

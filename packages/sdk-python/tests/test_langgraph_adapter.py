@@ -381,3 +381,50 @@ def test_unguarded_tool_node_warns_once(
         graph.invoke({"messages": [("user", "ship it")]})
     assert ran == [("deploy", "prod")]  # callbacks can't refuse a call; they only warn
     assert "the policy says block for deploy" in caplog.text
+
+
+def test_guard_tool_before_a_call_counts_as_checked(
+    collector: FakeCollector, caplog: pytest.LogCaptureFixture
+) -> None:
+    from langchain_core.tools import tool
+
+    from agentspace.adapters import langgraph as lg
+
+    @tool
+    def write_notes(text: str) -> str:
+        """Write notes."""
+        return "ok"
+
+    init_fast(collector.url, policy={"tools": [{"match": "write_notes", "action": "review"}]})
+    approve_when_requested(collector, "approved")
+
+    def on_node(name: str) -> None:
+        if name == "triage":
+            lg.guard_tool("write_notes", {"text": "hi"}, timeout=10)
+            write_notes.invoke({"text": "hi"})
+
+    with caplog.at_level("WARNING", logger="agentspace"):
+        build(on_node=on_node).invoke({"bug": "x"})
+    assert "wasn't checked" not in caplog.text
+
+
+def test_guard_tool_inside_a_node_is_attached_to_it(collector: FakeCollector) -> None:
+    from agentspace.adapters import langgraph as lg
+
+    init_fast(collector.url, policy={"tools": [{"match": "deploy", "action": "block"}]})
+    denied: list[Any] = []
+
+    def on_node(name: str) -> None:
+        if name == "triage":
+            lg.guard_tool("read_file")  # allowed: no rule
+            try:
+                lg.guard_tool("deploy", {"env": "prod"})
+            except agentspace.PolicyDenied as e:
+                denied.append(e)
+
+    build(on_node=on_node).invoke({"bug": "x"})
+    agentspace.flush()
+    assert denied and denied[0].outcome == "blocked"
+    (err,) = collector.of_type("error")
+    assert (err["agent_id"], err["team_id"]) == ("triage", "dev-team")
+    assert err["run_id"] == collector.of_type("run.started")[0]["run_id"]

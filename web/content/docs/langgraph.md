@@ -37,7 +37,7 @@ if decision.approved:
     write(path)
 ```
 
-**Policy:** callbacks can't refuse a tool call, so the [oversight policy](policy) is checked by LangGraph's tool interceptor: `ToolNode(tools, wrap_tool_call=policy_wrapper, awrap_tool_call=apolicy_wrapper)` (both from `agentspace.adapters.langgraph`). A refused call becomes an error `ToolMessage`. Tools you call yourself can use `agentspace.guard_tool()`.
+**Policy:** callbacks can't refuse a tool call, so the [oversight policy](policy) is checked by LangGraph's tool interceptor: `ToolNode(tools, wrap_tool_call=policy_wrapper, awrap_tool_call=apolicy_wrapper)` (both from `agentspace.adapters.langgraph`). A refused call becomes an error `ToolMessage`. In your own tool loop, call `guard_tool(name, args)` from `agentspace.adapters.langgraph` before each tool: it's attached to the node's agent and run, and raises `agentspace.PolicyDenied`. The dev-team example's `--story` mode does this.
 
 **Python 3.10 with async graphs:** LangGraph doesn't propagate callbacks into calls inside nodes there, so model and tool events inside nodes are missed. Use Python 3.11+ for async graphs.
 
