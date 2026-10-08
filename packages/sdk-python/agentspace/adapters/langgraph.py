@@ -24,6 +24,11 @@ Controls: an operator's cancel raises ``agentspace.Cancelled`` at the next node,
 tool start (the run finishes as "cancelled"). Pause blocks there too for sync graphs; async
 graphs pause at an ``await agentspace.acheckpoint()`` inside a node.
 
+Policy (D-045): callbacks can observe a tool call but not refuse it, so the policy is checked
+by LangGraph's own tool interceptor: ``ToolNode(tools, wrap_tool_call=policy_wrapper,
+awrap_tool_call=apolicy_wrapper)``. A blocked or refused call becomes an error ``ToolMessage``
+the model can read. Tools run outside a ``ToolNode`` can call ``agentspace.guard_tool()``.
+
 Python 3.10 + async graphs: LangGraph can't propagate callbacks into model/tool calls made
 inside nodes unless the node accepts ``config`` and passes it on (``llm.invoke(x, config)``).
 Node/agent/handoff events still work. Python 3.11+ has no such limitation.
@@ -33,6 +38,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -45,7 +51,9 @@ from agentspace._client import AgentInfo
 from agentspace._context import current_run
 from agentspace._control import ApprovalResult, Cancelled, adapter_checkpoint
 from agentspace._control import request_approval_sync as _request_approval_sync
-from agentspace._log import internal_error
+from agentspace._log import internal_error, warn_limited
+from agentspace._oversight import PolicyDenied, aguard_tool, guard_tool
+from agentspace._policy import evaluate_policy
 from agentspace._util import slugify, truncate
 
 if TYPE_CHECKING:
@@ -524,6 +532,8 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
             self._checkpoint(parent)
             tool_name = str(kwargs.get("name") or (serialized or {}).get("name") or "tool")
             call_id = str(kwargs.get("tool_call_id") or run_id.hex)
+            if not _guarded.get():
+                self._warn_unguarded(parent, tool_name)
             node = _Node(
                 parent.run,
                 parent.agent_id,
@@ -578,6 +588,54 @@ class AgentSpaceCallbackHandler(BaseCallbackHandler):
         except Exception as exc:
             internal_error("langgraph.on_tool_error", exc)
 
+    def _warn_unguarded(self, parent: _Node, tool_name: str) -> None:
+        """The policy has a say about a call that didn't go through ``policy_wrapper``."""
+        client = self._client()
+        policies = client.policies() if client else []
+        if not client or not policies:
+            return
+        escalated = parent.run.run_id in client.escalated
+        decision = evaluate_policy(policies, tool_name, parent.agent_id, escalated)
+        if decision.action != "allow":
+            warn_limited(
+                f"langgraph.unguarded:{tool_name}",
+                "agentspace: the policy says %s for %s, but this LangGraph tool call wasn't "
+                "checked. Use ToolNode(wrap_tool_call=policy_wrapper) or call guard_tool() in "
+                "the tool.",
+                decision.action,
+                tool_name,
+                interval=3600.0,
+            )
+
+    def denied(self, parent: _Node, tool_name: str, call_id: str, args: Any, error: str) -> None:
+        """A call the policy refused: recorded as a failed tool call (it never started)."""
+        node = _Node(
+            parent.run, parent.agent_id, parent.step_id, "tool", time.monotonic(), name=tool_name
+        )
+        self._emit(
+            node,
+            "tool.call",
+            {
+                "tool_name": tool_name,
+                "call_id": call_id,
+                "arguments": self._content("tool.arguments", args),
+                "arguments_hash": self._args_hash(args),
+            },
+            summary=f"{tool_name}()",
+        )
+        self._emit(
+            node,
+            "tool.result",
+            {
+                "tool_name": tool_name,
+                "call_id": call_id,
+                "ok": False,
+                "duration_ms": 0.0,
+                "error": truncate(error, 2000),
+            },
+            summary=f"{tool_name} denied",
+        )
+
     def _end_tool(self, run_id: UUID, output: Any, error: BaseException | None) -> None:
         with self._lock:
             node = self._nodes.pop(run_id, None)
@@ -624,19 +682,23 @@ def instrument(client: Client | None = None) -> bool:
     return True
 
 
+def _current_node() -> _Node | None:
+    from langchain_core.runnables.config import var_child_runnable_config
+
+    config = var_child_runnable_config.get() or {}
+    manager = config.get("callbacks")
+    parent = getattr(manager, "parent_run_id", None)
+    handler = _handler
+    return handler._nodes.get(parent) if handler and parent else None
+
+
 def current_context() -> tuple[str, str | None, str | None] | None:
     """``(run_id, agent_id, team_id)`` of the node / tool running now, or None.
 
     Works inside graph nodes and tools (LangChain keeps the active config in a contextvar).
     """
     try:
-        from langchain_core.runnables.config import var_child_runnable_config
-
-        config = var_child_runnable_config.get() or {}
-        manager = config.get("callbacks")
-        parent = getattr(manager, "parent_run_id", None)
-        handler = _handler
-        node = handler._nodes.get(parent) if handler and parent else None
+        node = _current_node()
         if node is None:
             return None
         return node.run.run_id, node.agent_id, node.run.team_id if node.agent_id else None
@@ -657,6 +719,65 @@ def request_approval_sync(
     return _request_approval_sync(
         reason, payload, timeout=timeout, run_id=run_id, agent_id=agent_id, team_id=team_id
     )
+
+
+# ---------------- policy (D-045) ----------------
+
+#: Set while a tool runs after ``policy_wrapper`` checked it.
+_guarded: ContextVar[bool] = ContextVar("agentspace_langgraph_guarded", default=False)
+
+
+def _call_of(request: Any) -> tuple[str, Any, str]:
+    call = request.tool_call
+    return str(call.get("name") or "tool"), call.get("args"), str(call.get("id") or "")
+
+
+def _refused(request: Any, denied: PolicyDenied) -> Any:
+    """Record the refusal and hand the model an error ``ToolMessage`` saying why."""
+    from langchain_core.messages import ToolMessage
+
+    name, args, call_id = _call_of(request)
+    try:
+        node = _current_node()
+        if node is not None and _handler is not None:
+            _handler.denied(node, name, call_id or name, args, str(denied))
+    except Exception as exc:
+        internal_error("langgraph.policy", exc)
+    return ToolMessage(content=str(denied), name=name, tool_call_id=call_id, status="error")
+
+
+def policy_wrapper(request: Any, execute: Callable[[Any], Any]) -> Any:
+    """``ToolNode(tools, wrap_tool_call=policy_wrapper)``: check each call against the policy.
+
+    Allowed (or approved) calls run unchanged. A blocked, rejected or timed-out call doesn't run;
+    the model gets an error ``ToolMessage`` explaining why. Pause/cancel still apply.
+    """
+    name, args, _ = _call_of(request)
+    ctx = current_context() or (None, None, None)
+    try:
+        guard_tool(name, args, run_id=ctx[0], agent_id=ctx[1], team_id=ctx[2])
+    except PolicyDenied as denied:
+        return _refused(request, denied)
+    token = _guarded.set(True)
+    try:
+        return execute(request)
+    finally:
+        _guarded.reset(token)
+
+
+async def apolicy_wrapper(request: Any, execute: Callable[[Any], Awaitable[Any]]) -> Any:
+    """Async :func:`policy_wrapper` (``ToolNode(..., awrap_tool_call=apolicy_wrapper)``)."""
+    name, args, _ = _call_of(request)
+    ctx = current_context() or (None, None, None)
+    try:
+        await aguard_tool(name, args, run_id=ctx[0], agent_id=ctx[1], team_id=ctx[2])
+    except PolicyDenied as denied:
+        return _refused(request, denied)
+    token = _guarded.set(True)
+    try:
+        return await execute(request)
+    finally:
+        _guarded.reset(token)
 
 
 def get_handler() -> AgentSpaceCallbackHandler:

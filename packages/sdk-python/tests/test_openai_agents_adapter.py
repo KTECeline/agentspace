@@ -189,3 +189,76 @@ def test_usage_reads_cache_tokens() -> None:
         },
     )
     assert oa._usage(data) == ("gpt-5-mini", 900, 30, 512, None)
+
+
+# ---------------- policy (D-045) ----------------
+
+
+def _desk_with_seen_inputs(tools: Any = None) -> tuple[Any, list[Any]]:
+    """The support desk, recording what the model is sent on each turn."""
+    seen: list[Any] = []
+    desk = build_support_desk()
+    billing = desk.handoffs[0]
+    model = billing.model
+    original = model.get_response
+
+    async def get_response(*args: Any, **kw: Any) -> Any:
+        seen.append(kw.get("input", args[1] if len(args) > 1 else None))
+        return await original(*args, **kw)
+
+    model.get_response = get_response
+    if tools is not None:
+        billing.tools = tools
+    return desk, seen
+
+
+def test_policy_block_rejects_the_call_and_tells_the_model(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    block = {"match": "lookup_*", "action": "block", "reason": "Billing is read-only today."}
+    init_fast(collector.url, policy={"tools": [block]})
+    desk, seen = _desk_with_seen_inputs()
+    oa.apply_policy(desk)
+    oa.apply_policy(desk)  # idempotent
+    assert desk.handoffs[0].tools[0].tool_input_guardrails == [oa.policy_guardrail]
+    asyncio.run(Runner.run(desk, "Is invoice 42 paid?"))
+    assert agentspace.flush()
+    reason = "lookup_invoice is blocked by policy (rule lookup_*): Billing is read-only today."
+    assert reason in json.dumps(seen[-1], default=str)  # the model's next turn sees why
+    assert "paid on 2026-09-01" not in json.dumps(seen[-1], default=str)  # the tool didn't run
+    (result,) = collector.of_type("tool.result")
+    assert result["data"]["ok"] is False and "blocked by policy" in result["data"]["error"]
+    assert result["agent_id"] == "billing"
+    (err,) = collector.of_type("error")
+    assert err["data"]["kind"] == "PolicyDenied" and err["agent_id"] == "billing"
+    assert err["run_id"] == collector.of_type("run.started")[0]["run_id"]
+    assert_valid_events(validator, collector.events)
+
+
+def test_policy_review_asks_in_the_office(collector: FakeCollector) -> None:
+    init_fast(collector.url, policy={"tools": [{"match": "lookup_invoice", "action": "review"}]})
+    collector.on_approval = lambda e: ("approved", None)
+    desk, seen = _desk_with_seen_inputs()
+    oa.apply_policy(desk)
+    asyncio.run(Runner.run(desk, "Is invoice 42 paid?"))
+    assert agentspace.flush()
+    assert "paid on 2026-09-01" in json.dumps(seen[-1], default=str)
+    (req,) = collector.of_type("approval.requested")
+    assert req["agent_id"] == "billing" and req["data"]["policy"]["tool"] == "lookup_invoice"
+    assert req["run_id"] == collector.of_type("run.started")[0]["run_id"]
+    assert [r["data"]["ok"] for r in collector.of_type("tool.result")] == [True]
+
+
+def test_unguarded_tool_warns(collector: FakeCollector, caplog: pytest.LogCaptureFixture) -> None:
+    from agents import function_tool
+
+    @function_tool(name_override="lookup_invoice")
+    def unguarded(invoice_id: str) -> str:
+        """Look up an invoice by id."""
+        return "paid"
+
+    init_fast(collector.url, policy={"tools": [{"match": "lookup_invoice", "action": "block"}]})
+    desk, _ = _desk_with_seen_inputs(tools=[unguarded])
+    with caplog.at_level("WARNING", logger="agentspace"):
+        asyncio.run(Runner.run(desk, "Is invoice 42 paid?"))
+    assert "the policy says block for lookup_invoice" in caplog.text

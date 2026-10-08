@@ -183,7 +183,9 @@ async def aguard_tool(
     """Async :func:`guard_tool`: a review waits in a thread, so the event loop keeps running."""
     decision = decide(tool, run_id=run_id, agent_id=agent_id)
     if decision.action != "review":
-        return guard_tool(tool, arguments, timeout=timeout, run_id=run_id, agent_id=agent_id)
+        return guard_tool(
+            tool, arguments, timeout=timeout, run_id=run_id, agent_id=agent_id, team_id=team_id
+        )
     ref = current_agent.get()
     return await asyncio.to_thread(
         guard_tool,

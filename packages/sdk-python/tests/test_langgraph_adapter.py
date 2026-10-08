@@ -255,3 +255,129 @@ def test_usage_reads_cache_tokens() -> None:
     )
     assert _usage(msg, None) == (1000, 20, 600, 100)
     assert _usage(AIMessage(content="hi"), None) == (None, None, None, None)
+
+
+# ---------------- policy (D-045) ----------------
+
+POLICY = {
+    "tools": [
+        {"match": "deploy", "action": "block", "reason": "No deploys on Fridays."},
+        {"match": "write_*", "action": "review"},
+    ]
+}
+
+
+def _tool_graph(calls: list[str], *, wrapped: bool = True) -> tuple[Any, list[Any]]:
+    """agent -> tools (a ToolNode) -> agent, with one model turn calling ``calls``."""
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langchain_core.tools import tool
+    from langgraph.graph import START, MessagesState, StateGraph
+    from langgraph.prebuilt import ToolNode, tools_condition
+
+    from agentspace.adapters.langgraph import apolicy_wrapper, policy_wrapper
+
+    ran: list[Any] = []
+
+    @tool
+    def deploy(env: str) -> str:
+        """Deploy somewhere."""
+        ran.append(("deploy", env))
+        return "deployed"
+
+    @tool
+    def write_file(path: str) -> str:
+        """Write a file."""
+        ran.append(("write_file", path))
+        return "written"
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a file."""
+        ran.append(("read_file", path))
+        return "contents"
+
+    tool_calls = [
+        {
+            "name": n,
+            "args": {"env": "prod"} if n == "deploy" else {"path": "a.py"},
+            "id": f"call_{i}",
+        }
+        for i, n in enumerate(calls)
+    ]
+    llm = FakeMessagesListChatModel(
+        responses=[AIMessage(content="", tool_calls=tool_calls), AIMessage(content="Done.")]
+    )
+    seen: list[Any] = []
+
+    def agent(state: MessagesState) -> dict[str, Any]:
+        seen.append(list(state["messages"]))
+        return {"messages": [llm.invoke(state["messages"])]}
+
+    kw: dict[str, Any] = (
+        {"wrap_tool_call": policy_wrapper, "awrap_tool_call": apolicy_wrapper} if wrapped else {}
+    )
+    g = StateGraph(MessagesState)
+    g.add_node("agent", agent)
+    g.add_node("tools", ToolNode([deploy, write_file, read_file], **kw))
+    g.add_edge(START, "agent")
+    g.add_conditional_edges("agent", tools_condition)
+    g.add_edge("tools", "agent")
+    return g.compile(name="ops"), [ran, seen]
+
+
+def test_policy_block_returns_an_error_message_to_the_model(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    init_fast(collector.url, policy=POLICY)
+    graph, (ran, seen) = _tool_graph(["deploy", "read_file"])
+    graph.invoke({"messages": [("user", "ship it")]})
+    assert agentspace.flush()
+    assert ran == [("read_file", "a.py")]  # the blocked tool never ran; the other one did
+    replies = {m.tool_call_id: m for m in seen[-1] if getattr(m, "type", "") == "tool"}
+    assert replies["call_0"].status == "error"
+    assert "deploy is blocked by policy (rule deploy): No deploys on Fridays." in str(
+        replies["call_0"].content
+    )
+    assert replies["call_1"].status == "success"
+    results = {r["data"]["call_id"]: r["data"] for r in collector.of_type("tool.result")}
+    assert results["call_0"]["ok"] is False and "blocked by policy" in results["call_0"]["error"]
+    assert results["call_1"]["ok"] is True
+    (err,) = collector.of_type("error")
+    run_id = collector.of_type("run.started")[0]["run_id"]
+    assert err["data"]["kind"] == "PolicyDenied" and err["run_id"] == run_id
+    assert_valid_events(validator, collector.events)
+
+
+def test_policy_review_asks_and_follows_the_decision(collector: FakeCollector) -> None:
+    init_fast(collector.url, policy=POLICY)
+    approve_when_requested(collector, "rejected")
+    graph, (ran, seen) = _tool_graph(["write_file"])
+    graph.invoke({"messages": [("user", "edit")]})
+    assert agentspace.flush()
+    assert ran == []
+    assert "rejected by an operator" in str(seen[-1][-1].content)
+    (req,) = collector.of_type("approval.requested")
+    assert req["data"]["policy"]["tool"] == "write_file"
+    assert req["run_id"] == collector.of_type("run.started")[0]["run_id"]
+
+
+def test_policy_async_graph(collector: FakeCollector) -> None:
+    init_fast(collector.url, policy=POLICY)
+    approve_when_requested(collector, "approved")
+    graph, (ran, _) = _tool_graph(["deploy", "write_file"])
+    asyncio.run(graph.ainvoke({"messages": [("user", "go")]}))
+    assert agentspace.flush()
+    assert ran == [("write_file", "a.py")]
+    assert len(collector.of_type("approval.requested")) == 1
+
+
+def test_unguarded_tool_node_warns_once(
+    collector: FakeCollector, caplog: pytest.LogCaptureFixture
+) -> None:
+    init_fast(collector.url, policy=POLICY)
+    graph, (ran, _) = _tool_graph(["deploy"], wrapped=False)
+    with caplog.at_level("WARNING", logger="agentspace"):
+        graph.invoke({"messages": [("user", "ship it")]})
+    assert ran == [("deploy", "prod")]  # callbacks can't refuse a call; they only warn
+    assert "the policy says block for deploy" in caplog.text

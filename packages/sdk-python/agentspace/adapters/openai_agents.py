@@ -19,25 +19,39 @@ tool span start (the run finishes as "cancelled"). Pausing needs an async hook, 
 SDK runs on an event loop: pass ``hooks=agentspace.adapters.openai_agents.ControlHooks()`` to
 ``Runner.run`` and runs pause before the next agent, model or tool call.
 
+Policy (D-045): tracing can observe a tool call but not refuse it, so the policy is checked by
+the SDK's tool input guardrails. ``apply_policy(agent)`` adds ``policy_guardrail`` to the
+function tools of the agent and the agents it hands off to (or add it yourself:
+``@function_tool(tool_input_guardrails=[policy_guardrail])``). A blocked or refused call doesn't
+run; the model gets the reason as the tool's output.
+
 The team (office room) defaults to the trace's workflow name. Override it with trace metadata
 ``{"agentspace_team": "..."}`` (``RunConfig(trace_metadata=...)``).
 """
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agents import RunHooks
-from agents.tracing import TracingProcessor, get_current_trace
+from agents.tool_guardrails import (
+    ToolGuardrailFunctionOutput,
+    ToolInputGuardrail,
+    ToolInputGuardrailData,
+)
+from agents.tracing import SpanError, TracingProcessor, get_current_span, get_current_trace
 
 from agentspace import _api
 from agentspace._client import AgentInfo
 from agentspace._context import current_run
 from agentspace._control import Cancelled, adapter_acheckpoint, raise_if_cancelled
-from agentspace._log import internal_error
+from agentspace._log import internal_error, warn_limited
+from agentspace._oversight import PolicyDenied, aguard_tool
+from agentspace._policy import evaluate_policy
 from agentspace._util import slugify, truncate
 
 if TYPE_CHECKING:
@@ -65,6 +79,7 @@ class _Node:
     t0: float
     name: str | None = None
     parent_step: str | None = None
+    guarded: bool = False  # a function span the policy guardrail checked
 
 
 class AgentSpaceTracingProcessor(TracingProcessor):
@@ -332,6 +347,8 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                         summary=f"handed off to {dst}",
                     )
             elif kind == "function":
+                if not node.guarded:
+                    self._warn_unguarded(node)
                 if self._needs_arguments():
                     self._tool_call(node, span, getattr(data, "input", None))
                 self._emit(
@@ -352,6 +369,25 @@ class AgentSpaceTracingProcessor(TracingProcessor):
                 self._status(node, "thinking")
         except Exception as exc:
             internal_error("openai_agents.on_span_end", exc)
+
+    def _warn_unguarded(self, node: _Node) -> None:
+        """The policy has a say about a call that didn't go through ``policy_guardrail``."""
+        client = self._client()
+        policies = client.policies() if client else []
+        if not client or not policies:
+            return
+        tool = node.name or "tool"
+        escalated = node.run.run_id in client.escalated
+        decision = evaluate_policy(policies, tool, node.agent_id, escalated)
+        if decision.action != "allow":
+            warn_limited(
+                f"openai_agents.unguarded:{tool}",
+                "agentspace: the policy says %s for %s, but this tool call wasn't checked. Use "
+                "apply_policy(agent) or tool_input_guardrails=[policy_guardrail].",
+                decision.action,
+                tool,
+                interval=3600.0,
+            )
 
     def _tool_call(self, node: _Node, span: Span[Any], arguments: Any) -> None:
         self._emit(
@@ -448,6 +484,71 @@ class ControlHooks(RunHooks[Any]):
         await adapter_acheckpoint(run_id, agent_id, run.team_id if run else None)
 
 
+# ---------------- policy (D-045) ----------------
+
+
+async def _check_policy(data: ToolInputGuardrailData) -> ToolGuardrailFunctionOutput:
+    ctx = data.context
+    tool = str(ctx.tool_name)
+    try:
+        span = get_current_span()
+        processor = get_processor()
+        node = processor._nodes.get(span.span_id) if span else None
+        if node is not None:
+            node.guarded = True
+        trace = get_current_trace()
+        run = processor._runs.get(trace.trace_id) if trace else None
+        try:
+            arguments: Any = json.loads(ctx.tool_arguments) if ctx.tool_arguments else None
+        except ValueError:
+            arguments = ctx.tool_arguments
+        agent_id = slugify(str(getattr(data.agent, "name", ""))) or None
+    except Exception as exc:
+        internal_error("openai_agents.policy", exc)
+        span, run, arguments, agent_id = None, None, None, None
+    try:
+        await aguard_tool(
+            tool,
+            arguments,
+            run_id=run.run_id if run else None,
+            agent_id=agent_id,
+            team_id=run.team_id if run and agent_id else None,
+        )
+    except PolicyDenied as denied:
+        if span is not None:
+            # The function span (and every trace processor) sees the call as failed.
+            span.set_error(SpanError(message=str(denied), data={"kind": "PolicyDenied"}))
+        return ToolGuardrailFunctionOutput.reject_content(str(denied))
+    return ToolGuardrailFunctionOutput.allow()
+
+
+#: Checks each function tool call against the policy before it runs (D-045).
+policy_guardrail: ToolInputGuardrail[Any] = ToolInputGuardrail(
+    guardrail_function=_check_policy, name="agentspace_policy"
+)
+
+
+def apply_policy(*agents: Any) -> None:
+    """Add :data:`policy_guardrail` to the function tools of ``agents`` and of the agents they
+    hand off to. Idempotent. It changes the tool objects, so shared tools are guarded everywhere.
+    """
+    from agents import Agent, FunctionTool
+
+    seen: set[int] = set()
+    todo = list(agents)
+    while todo:
+        agent = todo.pop()
+        if id(agent) in seen or not isinstance(agent, Agent):
+            continue
+        seen.add(id(agent))
+        for tool in agent.tools:
+            if isinstance(tool, FunctionTool):
+                guards = list(tool.tool_input_guardrails or [])
+                if policy_guardrail not in guards:
+                    tool.tool_input_guardrails = [*guards, policy_guardrail]
+        todo.extend(h for h in agent.handoffs if isinstance(h, Agent))
+
+
 _processor: AgentSpaceTracingProcessor | None = None
 
 
@@ -475,6 +576,8 @@ __all__ = [
     "AgentSpaceTracingProcessor",
     "Cancelled",
     "ControlHooks",
+    "apply_policy",
     "get_processor",
     "instrument",
+    "policy_guardrail",
 ]
