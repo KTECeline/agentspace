@@ -120,6 +120,7 @@ export class SqliteStore implements Store {
         PRIMARY KEY (workspace, approval_id)
       );
       CREATE INDEX IF NOT EXISTS approvals_status ON approvals (workspace, status, created_at);
+      CREATE INDEX IF NOT EXISTS approvals_run ON approvals (workspace, run_id);
     `);
     // Databases created before run controls (4a), cost sources (D-037), findings (D-044) and policy (D-045).
     const addColumn = (table: string, column: string, type: string) => {
@@ -218,6 +219,7 @@ export class SqliteStore implements Store {
       workspaces: db.prepare(`SELECT workspace, COUNT(*) AS agents FROM agents GROUP BY workspace ORDER BY workspace`),
       approvalsAll: db.prepare(`SELECT * FROM approvals WHERE workspace = ? ORDER BY created_at DESC LIMIT ?`),
       approvalsBy: db.prepare(`SELECT * FROM approvals WHERE workspace = ? AND status = ? ORDER BY created_at DESC LIMIT ?`),
+      approvalsOfRun: db.prepare(`SELECT * FROM approvals WHERE workspace = ? AND run_id = ? AND (? IS NULL OR status = ?) ORDER BY created_at DESC LIMIT ?`),
       approval: db.prepare(`SELECT * FROM approvals WHERE workspace = ? AND approval_id = ?`),
       expired: db.prepare(`SELECT * FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < ?`),
     };
@@ -423,8 +425,12 @@ export class SqliteStore implements Store {
   async workspaces() {
     return this.s.workspaces.all() as { workspace: string; agents: number }[];
   }
-  async approvals(workspace: string, status?: ApprovalStatus, limit = 100) {
-    const rows = status ? this.s.approvalsBy.all(workspace, status, limit) : this.s.approvalsAll.all(workspace, limit);
+  async approvals(workspace: string, status?: ApprovalStatus, limit = 100, runId?: string) {
+    const rows = runId
+      ? this.s.approvalsOfRun.all(workspace, runId, status ?? null, status ?? null, limit)
+      : status
+        ? this.s.approvalsBy.all(workspace, status, limit)
+        : this.s.approvalsAll.all(workspace, limit);
     return (rows as ApprovalRow[]).map(rowToApproval);
   }
   async approval(workspace: string, approvalId: string) {

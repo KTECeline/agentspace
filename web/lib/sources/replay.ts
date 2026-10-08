@@ -179,7 +179,7 @@ export class ReplayPlayer {
     out.push({ type: "runs", runs: [...runs.values()] });
     if (approvals) {
       const upto = this.timeline.events.slice(0, to).map((e) => ({ ...e, workspace: this.workspace }) as AgentSpaceEvent);
-      out.push({ type: "approvals", approvals: approvalsFrom(upto) });
+      out.push({ type: "approvals", approvals: approvalsFrom(upto, this.timeline.contexts) });
     }
     out.forEach((m) => this.sink?.send(m));
   }

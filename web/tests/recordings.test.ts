@@ -30,6 +30,13 @@ describe("bundled recordings", () => {
     expect(Object.values(state.runs).some((r) => r.status === "ok")).toBe(true);
   });
 
+  it.each(RECORDINGS)("$id carries the evidence for every policy review", (info) => {
+    const rec = JSON.parse(readFileSync(fileURLToPath(new URL(`../public${info.file}`, import.meta.url)), "utf8")) as Recording;
+    const reviews = rec.events.filter((e) => e.type === "approval.requested" && e.data.policy).map((e) => (e.data as { approval_id: string }).approval_id);
+    const withEvidence = new Set((rec.approvals ?? []).filter((a) => a.context).map((a) => a.approval_id));
+    expect(reviews.filter((id) => !withEvidence.has(id))).toEqual([]);
+  });
+
   it("falls back to the first recording for unknown ids", () => {
     expect(recordingById("nope").id).toBe("dev-team");
     expect(recordingById(undefined).id).toBe("dev-team");

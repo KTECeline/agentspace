@@ -331,10 +331,10 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
 
   // ---------------- approvals ----------------
 
-  app.get<WsParams & { Querystring: { status?: string; limit?: string } }>("/v1/workspaces/:ws/approvals", async (req, reply) => {
+  app.get<WsParams & { Querystring: { status?: string; limit?: string; run?: string } }>("/v1/workspaces/:ws/approvals", async (req, reply) => {
     if (!readable(req, reply)) return reply;
     const status = (["pending", "approved", "rejected", "timeout"] as const).find((s) => s === req.query.status) as ApprovalStatus | undefined;
-    return (await db.approvals(req.params.ws, status, clamp(req.query.limit, 100, 500))).map(redactApproval);
+    return (await db.approvals(req.params.ws, status, clamp(req.query.limit, 100, 500), req.query.run || undefined)).map(redactApproval);
   });
 
   /** Long-poll: ?wait=N (max 30 s) returns as soon as the approval is decided. */

@@ -17,11 +17,11 @@ for path in "/" "/dashboard" "/replay?run=x&collector=https://attacker.example" 
 done
 ok "the live office, /dashboard, /replay and /compare redirect to /demo, even with ?collector="
 
-for path in /demo /docs /docs/security /recordings/dev-team.json; do
+for path in /demo /demo/compare /docs /docs/security /recordings/dev-team.json; do
   code=$(curl "${H[@]}" -o /dev/null -w '%{http_code}' "$BASE$path")
   [ "$code" = 200 ] || fail "GET $path -> $code"
 done
-ok "/demo, /docs and the recordings are served"
+ok "/demo, /demo/compare, /docs and the recordings are served"
 
 csp=$(curl "${H[@]}" -D - -o /dev/null "$BASE/demo" | tr -d '\r' | grep -i '^content-security-policy:' || true)
 [[ "$csp" == *"connect-src 'self'"* ]] || fail "missing CSP connect-src 'self' (got: ${csp:-none})"

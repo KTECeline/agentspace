@@ -105,5 +105,10 @@ describe("the collector's policy (D-045)", () => {
       baseline_runs: 5,
     });
     expect((await get<ApprovalState>("/v1/workspaces/default/approvals/ap2")).context).toBeNull();
+    // A replay of the run reads its approvals (with the evidence) with ?run=.
+    const ofRun = await get<ApprovalState[]>("/v1/workspaces/default/approvals?run=bad");
+    expect(ofRun.map((a) => a.approval_id).sort()).toEqual(["ap1", "ap2"]);
+    expect(await get<ApprovalState[]>("/v1/workspaces/default/approvals?run=ok0")).toEqual([]);
+    expect(await get<ApprovalState[]>("/v1/workspaces/default/approvals?run=bad&status=approved")).toEqual([]);
   });
 });

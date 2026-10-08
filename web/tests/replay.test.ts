@@ -74,6 +74,16 @@ describe("buildTimeline", () => {
     expect(approvalsFrom(tl.events.slice(0, 5)).map((a) => a.status)).toEqual(["pending"]);
     expect(approvalsFrom(tl.events)[0]).toMatchObject({ status: "approved", resolved_by: "sam", reason: "Ship?" });
   });
+
+  it("brings the collector's review evidence along (it isn't in the events)", () => {
+    const id = approvalsFrom(tl.events)[0]!.approval_id;
+    const context = { findings: [], agent_tool_calls: 31, baseline_tool_calls_p50: 8, tool_calls: 1, run_cost_usd: 0.4, baseline_cost_p50: 0.1, baseline_runs: 6 };
+    const withEvidence = buildTimeline(tl.events, { approvals: [{ approval_id: id, context }, { approval_id: "other", context: null }] });
+    expect(withEvidence.contexts).toEqual({ [id]: context });
+    expect(approvalsFrom(withEvidence.events, withEvidence.contexts)[0]!.context).toEqual(context);
+    expect(snapshotAt(withEvidence, withEvidence.events.length, "w").message).toMatchObject({ approvals: [{ context }] });
+    expect(approvalsFrom(tl.events)[0]!.context).toBeNull();
+  });
 });
 
 describe("snapshotAt", () => {

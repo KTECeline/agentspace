@@ -1,4 +1,4 @@
-import type { AgentSpaceEvent, AgentState, ApprovalState, ApprovalStatus, StoredEvent, WsServerMessage } from "@agentspace/spec-types";
+import type { AgentSpaceEvent, AgentState, ApprovalContext, ApprovalState, ApprovalStatus, StoredEvent, WsServerMessage } from "@agentspace/spec-types";
 import { Projector } from "./projector";
 import { MAX_EVENTS } from "./state";
 
@@ -26,12 +26,25 @@ export interface Timeline {
   markers: Marker[];
   /** Agent ids in the order they first appear, so desks never move while scrubbing. */
   agentOrder: string[];
+  /** The collector's review evidence by approval id (D-045): it isn't in the events. */
+  contexts: Record<string, ApprovalContext>;
+}
+
+/** Approval rows a replay can get the evidence from: a recording's, or the collector's for the run. */
+export type ApprovalEvidence = Pick<ApprovalState, "approval_id" | "context">[];
+
+export interface TimelineOptions {
+  maxGapMs?: number;
+  approvals?: ApprovalEvidence;
 }
 
 /** Longest pause kept between two events; longer waits (a human approving, say) are squashed. */
 export const MAX_GAP_MS = 3000;
 
-export function buildTimeline(input: AgentSpaceEvent[], maxGapMs = MAX_GAP_MS): Timeline {
+export function buildTimeline(input: AgentSpaceEvent[], opts: TimelineOptions = {}): Timeline {
+  const maxGapMs = opts.maxGapMs ?? MAX_GAP_MS;
+  const contexts: Record<string, ApprovalContext> = {};
+  for (const a of opts.approvals ?? []) if (a.context) contexts[a.approval_id] = a.context;
   // Stable sort by timestamp: collectors return events in arrival order, which can differ.
   const events = input
     .map((e, i) => ({ e, i, t: Date.parse(e.ts) }))
@@ -57,7 +70,7 @@ export function buildTimeline(input: AgentSpaceEvent[], maxGapMs = MAX_GAP_MS): 
     const marker = markerFor(e);
     if (marker) markers.push({ index, at, ...marker });
   });
-  return { events, times, duration: at, markers, agentOrder };
+  return { events, times, duration: at, markers, agentOrder, contexts };
 }
 
 function markerFor(e: AgentSpaceEvent): Pick<Marker, "kind" | "label"> | null {
@@ -101,7 +114,7 @@ export function findMarker(tl: Timeline, ms: number, kind: MarkerKind | null, di
 }
 
 /** Approval rows from their events (the collector keeps a table; a replay rebuilds it). */
-export function approvalsFrom(events: AgentSpaceEvent[]): ApprovalState[] {
+export function approvalsFrom(events: AgentSpaceEvent[], contexts: Record<string, ApprovalContext> = {}): ApprovalState[] {
   const out = new Map<string, ApprovalState>();
   for (const e of events) {
     if (e.type === "approval.requested") {
@@ -120,8 +133,8 @@ export function approvalsFrom(events: AgentSpaceEvent[]): ApprovalState[] {
         expires_at: e.data.timeout_s !== undefined ? new Date(Date.parse(e.ts) + e.data.timeout_s * 1000).toISOString() : null,
         resolved_at: null,
         policy: e.data.policy ?? null,
-        // The collector's evidence isn't in the events; a replay shows the rule only.
-        context: null,
+        // The collector's evidence isn't in the events: it comes with the recording or the run.
+        context: contexts[e.data.approval_id] ?? null,
       });
     } else if (e.type === "approval.resolved") {
       const a = out.get(e.data.approval_id);
@@ -154,7 +167,7 @@ export function snapshotAt(tl: Timeline, count: number, workspace: string): { me
   const byId = new Map(projector.agentList(workspace).map((a) => [a.agent_id, a]));
   const agents = tl.agentOrder.map((id) => byId.get(id)).filter((a): a is AgentState => a !== undefined);
   return {
-    message: { type: "snapshot", workspace, agents, runs: projector.runList(workspace), events, approvals: approvalsFrom(upto) },
+    message: { type: "snapshot", workspace, agents, runs: projector.runList(workspace), events, approvals: approvalsFrom(upto, tl.contexts) },
     projector,
   };
 }

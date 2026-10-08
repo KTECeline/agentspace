@@ -86,6 +86,12 @@ export async function fetchRunEvents(base: string, workspace: string, runId: str
   }
 }
 
+/** A run's approvals with the collector's review evidence. Older collectors ignore `run`, so filter here too. */
+export async function fetchRunApprovals(base: string, workspace: string, runId: string, token: string | null): Promise<ApprovalState[]> {
+  const list = await call<ApprovalState[]>(base, `/v1/workspaces/${ws(workspace)}/approvals?run=${encodeURIComponent(runId)}&limit=500`, token);
+  return list.filter((a) => a.run_id === runId);
+}
+
 export function fetchPricing(base: string): Promise<PriceTable> {
   return call(base, "/v1/pricing", null);
 }

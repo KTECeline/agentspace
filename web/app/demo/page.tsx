@@ -11,6 +11,7 @@ export const metadata: Metadata = {
  * Recorded demo: plays /recordings/dev-team.json in a loop with no collector.
  *   ?scenario=crewai  pick a bundled recording (see lib/recordings.ts)
  *   ?speed=2        play faster
+ *   ?event=<id>     open the recording paused on this event (links from /demo/compare)
  *   ?stress=50      synthetic load instead: 50 agents at ?rate=100 events/s (shows an FPS meter)
  *   ?fps            show the FPS meter
  *   ?bench=20       UI load benchmark: after a 5 s warm-up, measure frame times for 20 s (bench/ui_load.md)
@@ -25,7 +26,7 @@ export default async function DemoPage({ searchParams }: PageProps<"/demo">) {
   const source =
     params.stress !== undefined
       ? ({ kind: "stress", agents: num(params.stress, 50, 200), rate: num(params.rate, 100, 1000) } as const)
-      : ({ kind: "recording", url: recordingById(pick(params.scenario)).file, speed: num(params.speed, 1, 16) } as const);
+      : ({ kind: "recording", url: recordingById(pick(params.scenario)).file, speed: num(params.speed, 1, 16), eventId: pick(params.event) } as const);
   const scenario = params.stress !== undefined ? undefined : recordingById(pick(params.scenario)).id;
   const benchSeconds = params.bench !== undefined ? num(params.bench, 20, 300) : undefined;
   return <OfficeApp source={source} scenario={scenario} showFps={params.stress !== undefined || params.fps !== undefined} benchSeconds={benchSeconds} />;

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, History, KeyRound, RefreshCw } from "lucide-react";
 import type { AgentSpaceEvent, RunState } from "@agentspace/spec-types";
-import { ApiError, fetchRunEvents, fetchRuns } from "@/lib/collector";
+import { ApiError } from "@/lib/collector";
+import { compareSource, type CompareSourceSpec } from "@/lib/compareSource";
 import { compareRuns, pickBaseline, type Comparison, type MetricChange, type RunProfile, type Unit } from "@/lib/compare";
 import { describe, formatCost, formatDuration, formatTokens } from "@/lib/format";
 import { buildTimeline } from "@/lib/replay";
@@ -13,8 +14,8 @@ import { Cost } from "../Cost";
 import { TokenButton } from "../operator/TokenDialog";
 
 interface Props {
-  collectorUrl: string;
-  workspace: string;
+  /** A collector, or the bundled recordings (/demo/compare). */
+  source: CompareSourceSpec;
   /** The run being looked at. */
   runId: string | null;
   /** What to compare it with; the latest good run of the same workflow when null. */
@@ -28,7 +29,11 @@ type Pair = { key: string; a: AgentSpaceEvent[]; b: AgentSpaceEvent[]; truncated
 const RUN_STATUS = { running: "thinking", ok: "done", cancelled: "waiting", error: "error" } as const;
 
 /** Two stored runs side by side: what changed, and where they first stopped doing the same thing (D-043). */
-export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId: initialBase, officeHref }: Props) {
+export function CompareView({ source: spec, runId: initialRun, baseId: initialBase, officeHref }: Props) {
+  const specKey = JSON.stringify(spec);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const source = useMemo(() => compareSource(spec), [specKey]);
+  const collector = source.collector;
   const token = useOffice((s) => s.token);
   const openTokenDialog = useOffice((s) => s.openTokenDialog);
   const [runId, setRunId] = useState(initialRun);
@@ -38,18 +43,19 @@ export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
-    useOffice.getState().setCollector({ url: collectorUrl, workspace });
-  }, [collectorUrl, workspace]);
+    useOffice.getState().setCollector(collector);
+  }, [collector]);
 
   useEffect(() => {
     let stale = false;
-    fetchRuns(collectorUrl, workspace, token)
+    source
+      .runs(token)
       .then((list) => !stale && setRuns({ status: "ok", runs: list }))
       .catch((error: unknown) => !stale && setRuns({ status: "error", error }));
     return () => {
       stale = true;
     };
-  }, [collectorUrl, workspace, token, refresh]);
+  }, [source, token, refresh]);
 
   const list = runs.status === "ok" ? runs.runs : [];
   // With no run given, look at the latest one that didn't finish ok (that's usually the question).
@@ -60,7 +66,7 @@ export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId
   useEffect(() => {
     if (!key || !target || !baseline) return;
     let stale = false;
-    Promise.all([fetchRunEvents(collectorUrl, workspace, baseline.run_id, token), fetchRunEvents(collectorUrl, workspace, target.run_id, token)])
+    Promise.all([source.events(baseline.run_id, token), source.events(target.run_id, token)])
       .then(([a, b]) => {
         if (stale) return;
         setPair({ key, a: buildTimeline(a.events).events, b: buildTimeline(b.events).events, truncated: a.truncated || b.truncated });
@@ -71,7 +77,7 @@ export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId
     };
     // The ids are in `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, collectorUrl, workspace, token]);
+  }, [key, source, token]);
 
   const choose = (which: "run" | "base", id: string) => {
     if (which === "run") setRunId(id);
@@ -81,7 +87,7 @@ export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId
     history.replaceState(null, "", `?${q}`);
   };
 
-  const replayHref = (run: string, eventId?: string) => `/replay?${new URLSearchParams({ collector: collectorUrl, workspace, run, ...(eventId ? { event: eventId } : {}) })}`;
+  const replayHref = (run: string, eventId?: string) => source.replayHref(run, eventId);
   const current = pair && pair.key === key ? pair : null;
   const comparison = useMemo(() => (current && "a" in current ? compareRuns(current.a, current.b) : null), [current]);
 
@@ -96,18 +102,20 @@ export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId
           Office
         </Link>
         <h1 className="font-display text-xl font-semibold tracking-tight">Compare runs</h1>
-        <span className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-muted">workspace: {workspace}</span>
-        <div className="ml-auto">
-          <TokenButton onSaved={() => setRefresh((n) => n + 1)} />
-        </div>
+        <span className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-muted">{source.label}</span>
+        {collector && (
+          <div className="ml-auto">
+            <TokenButton onSaved={() => setRefresh((n) => n + 1)} />
+          </div>
+        )}
       </header>
 
       {runs.status === "error" ? (
-        <LoadError error={runs.error} collectorUrl={collectorUrl} onRetry={() => setRefresh((n) => n + 1)} onToken={() => openTokenDialog(true)} />
+        <LoadError error={runs.error} collectorUrl={collector?.url ?? null} onRetry={() => setRefresh((n) => n + 1)} onToken={() => openTokenDialog(true)} />
       ) : runs.status === "loading" ? (
         <Skeleton />
       ) : list.length < 2 ? (
-        <Message title="Nothing to compare yet">This workspace needs at least two stored runs. Run your app twice, or an example with a different input.</Message>
+        <Message title="Nothing to compare yet">{collector ? "This workspace needs at least two stored runs. Run your app twice, or an example with a different input." : "There are fewer than two recorded runs."}</Message>
       ) : (
         <>
           <section aria-label="Runs" className="grid gap-3 md:grid-cols-2">
@@ -127,7 +135,7 @@ export function CompareView({ collectorUrl, workspace, runId: initialRun, baseId
           {!key ? null : current === null ? (
             <Skeleton />
           ) : "error" in current ? (
-            <LoadError error={current.error} collectorUrl={collectorUrl} onRetry={() => setRefresh((n) => n + 1)} onToken={() => openTokenDialog(true)} />
+            <LoadError error={current.error} collectorUrl={collector?.url ?? null} onRetry={() => setRefresh((n) => n + 1)} onToken={() => openTokenDialog(true)} />
           ) : comparison && baseline && target ? (
             <Body c={comparison} a={current.a} b={current.b} baseRun={baseline.run_id} targetRun={target.run_id} replayHref={replayHref} truncated={current.truncated} />
           ) : null}
@@ -439,8 +447,9 @@ function Message({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function LoadError({ error, collectorUrl, onRetry, onToken }: { error: unknown; collectorUrl: string; onRetry: () => void; onToken: () => void }) {
-  const status = error instanceof ApiError ? error.status : 0;
+function LoadError({ error, collectorUrl, onRetry, onToken }: { error: unknown; collectorUrl: string | null; onRetry: () => void; onToken: () => void }) {
+  // Recordings aren't a collector: show their own message.
+  const status = error instanceof ApiError ? error.status : collectorUrl ? 0 : -1;
   const needsToken = status === 401;
   return (
     <section role="alert" className="rounded-xl border border-border bg-surface p-8 text-center">

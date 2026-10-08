@@ -69,7 +69,8 @@ export interface Store {
   recentEvents(workspace: string, limit?: number): Promise<StoredEvent[]>;
   workspaces(): Promise<{ workspace: string; agents: number }[]>;
 
-  approvals(workspace: string, status?: ApprovalStatus, limit?: number): Promise<ApprovalState[]>;
+  /** Newest first; `runId` narrows it to one run (replays use it for the review evidence). */
+  approvals(workspace: string, status?: ApprovalStatus, limit?: number, runId?: string): Promise<ApprovalState[]>;
   approval(workspace: string, approvalId: string): Promise<ApprovalState | undefined>;
   resolveApproval(
     workspace: string,

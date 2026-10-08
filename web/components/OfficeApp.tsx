@@ -50,7 +50,8 @@ export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: P
   const run = useThrottled(useOffice((s) => latestRun(s.runs)), 250);
   const [logFilter, setLogFilter] = useState<string | null>(null);
   // A stored-run replay is for debugging, so it opens on the trace.
-  const [tab, setTab] = useState<Tab>(source.kind === "replay" ? "trace" : "activity");
+  // A recording opened on an event (from /demo/compare) does too.
+  const [tab, setTab] = useState<Tab>(source.kind === "replay" || (source.kind === "recording" && source.eventId) ? "trace" : "activity");
   const pendingApprovals = usePendingCount();
   const publicMode = useOffice((s) => !!s.info?.public_readonly);
   const openTokenDialog = useOffice((s) => s.openTokenDialog);
@@ -92,6 +93,16 @@ export function OfficeApp({ source, showFps = false, scenario, benchSeconds }: P
           </button>
         )}
         {scenario && <ScenarioPicker current={scenario} />}
+        {scenario && run && (
+          <a
+            href={`/demo/compare?run=${encodeURIComponent(run.run_id)}`}
+            title="Compare this recorded run with another recording of the same workflow"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <GitCompareArrows aria-hidden className="size-4" />
+            Compare
+          </a>
+        )}
         {source.kind === "replay" && (
           <a
             href={`/?${officeQuery}`}

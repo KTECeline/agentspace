@@ -29,7 +29,7 @@ All endpoints are JSON over HTTP on the collector (port 4800). When auth is conf
 
 | Method and path | What it does |
 |---|---|
-| `GET /v1/workspaces/:ws/approvals?status=` | approvals (`pending`, `approved`, `rejected`, `timeout`) |
+| `GET /v1/workspaces/:ws/approvals?status=&run=` | approvals (`pending`, `approved`, `rejected`, `timeout`), optionally of one run |
 | `GET /v1/workspaces/:ws/approvals/:id?wait=` | one approval; `wait` (seconds, at most 30) long-polls until it's decided |
 | `POST /v1/workspaces/:ws/approvals/:id/resolve` | `{"decision": "approved" \| "rejected", "comment", "by"}`: `409` if already decided |
 | `POST /v1/workspaces/:ws/runs/:run/control` | `{"action": "pause" \| "resume" \| "cancel", "by"}` |

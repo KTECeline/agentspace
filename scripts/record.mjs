@@ -43,6 +43,10 @@ for (;;) {
 const clean = events
   .map(({ seq: _seq, ...e }) => e)
   .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
-const recording = { format: "agentspace-recording", version: 1, name: args.name, run_id: runId, events: clean };
+// The collector's review evidence (D-045) lives on the approval rows, not in the events.
+const approvals = (await get(`/approvals?run=${encodeURIComponent(runId)}&limit=500`))
+  .filter((a) => a.run_id === runId && a.context)
+  .map(({ approval_id, context }) => ({ approval_id, context }));
+const recording = { format: "agentspace-recording", version: 1, name: args.name, run_id: runId, events: clean, ...(approvals.length ? { approvals } : {}) };
 writeFileSync(args.out, JSON.stringify(recording) + "\n");
 console.log(`recorded run ${runId}: ${clean.length} events -> ${args.out}`);

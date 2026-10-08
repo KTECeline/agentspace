@@ -195,6 +195,7 @@ export function ApprovalCard({ approval: a, showAgent = true }: { approval: Appr
 
 /** Which policy rule asked, and the run so far against the workflow's usual runs (D-045). */
 function WhyAsked({ approval }: { approval: ApprovalState }) {
+  const live = useOffice((s) => s.connection === "live");
   const why = approvalWhy(approval);
   if (!why) return null;
   return (
@@ -212,7 +213,7 @@ function WhyAsked({ approval }: { approval: ApprovalState }) {
         </p>
       )}
       {why.loading ? (
-        <p className="text-xs text-muted">Gathering evidence…</p>
+        live && <p className="text-xs text-muted">Gathering evidence…</p>
       ) : (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
           {why.lines.map((l) => (

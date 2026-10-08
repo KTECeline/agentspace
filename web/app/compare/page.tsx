@@ -23,5 +23,5 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
   if (params.collector) query.set("collector", collectorUrl);
   if (params.workspace) query.set("workspace", workspace);
   const qs = query.size ? `?${query}` : "";
-  return <CompareView collectorUrl={collectorUrl} workspace={workspace} runId={pick(params.run) ?? null} baseId={pick(params.base) ?? null} officeHref={`/${qs}`} />;
+  return <CompareView source={{ kind: "collector", url: collectorUrl, workspace }} runId={pick(params.run) ?? null} baseId={pick(params.base) ?? null} officeHref={`/${qs}`} />;
 }
