@@ -294,3 +294,61 @@ def test_approval_callback_fails_closed(collector: FakeCollector) -> None:
     can_use_tool = cas.approval_callback(timeout=0.5, tracker=tracker)
     out = asyncio.run(can_use_tool("Bash", {}, ToolPermissionContext(tool_use_id="t1")))
     assert isinstance(out, PermissionResultDeny) and "timeout" in out.message
+
+
+# ---------------- policy (D-045) ----------------
+
+POLICY = {
+    "tools": [
+        {"match": "Bash", "action": "block", "reason": "No shell."},
+        {"match": "Write", "action": "review"},
+    ]
+}
+
+
+def _pre(tracker: cas.ClaudeAgentTracker, tool: str, call: str) -> dict[str, Any]:
+    callback = tracker.hooks()["PreToolUse"][0].hooks[0]
+    data = {"session_id": "s1", "tool_name": tool, "tool_input": {"path": "a.py"}}
+    return asyncio.run(callback(data, call, None))
+
+
+def test_policy_block_denies_the_tool_but_the_session_goes_on(
+    collector: FakeCollector, validator: Draft202012Validator
+) -> None:
+    init_fast(collector.url, policy=POLICY)
+    tracker = cas.ClaudeAgentTracker("Support")
+    _start(tracker)
+    out = _pre(tracker, "Bash", "t1")
+    assert "continue_" not in out  # the agent keeps going and can choose another way
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert (
+        "Bash is blocked by policy (rule Bash): No shell."
+        in (out["hookSpecificOutput"]["permissionDecisionReason"])
+    )
+    # The SDK may still report the denied call as failed: it's recorded once.
+    tracker.handle(
+        "PostToolUseFailure", {"session_id": "s1", "tool_name": "Bash", "error": "denied"}, "t1"
+    )
+    assert agentspace.flush()
+    (result,) = collector.of_type("tool.result")
+    assert result["data"]["ok"] is False and "blocked by policy" in result["data"]["error"]
+    assert_valid_events(validator, collector.events)
+
+
+def test_policy_review_asks_and_follows_the_decision(collector: FakeCollector) -> None:
+    init_fast(collector.url, policy=POLICY)
+    tracker = cas.ClaudeAgentTracker("Support")
+    _start(tracker)
+    collector.on_approval = lambda e: ("approved", None)
+    assert _pre(tracker, "Write", "t1") == {}
+    collector.on_approval = lambda e: ("rejected", "not that file")
+    out = _pre(tracker, "Write", "t2")
+    assert (
+        "rejected by an operator: not that file"
+        in (out["hookSpecificOutput"]["permissionDecisionReason"])
+    )
+    assert _pre(tracker, "Read", "t3") == {}  # no rule: allowed
+    assert agentspace.flush()
+    reqs = collector.of_type("approval.requested")
+    assert [r["data"]["policy"]["tool"] for r in reqs] == ["Write", "Write"]
+    assert reqs[0]["agent_id"] == "support"

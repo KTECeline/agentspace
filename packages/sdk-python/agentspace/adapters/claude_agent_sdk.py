@@ -48,6 +48,7 @@ from agentspace import _api
 from agentspace._client import AgentInfo
 from agentspace._control import Cancelled, adapter_acheckpoint, request_approval
 from agentspace._log import internal_error
+from agentspace._oversight import PolicyDenied, aguard_tool
 from agentspace._util import slugify, truncate
 
 if TYPE_CHECKING:
@@ -92,6 +93,9 @@ class _Session:
     #: AssistantMessages with the same message id, and early ones carry partial usage.
     pending: dict[str, dict[str, Any]] = field(default_factory=dict)
     agents: set[str] = field(default_factory=set)
+    #: The call the latest PreToolUse was about, and calls the policy denied (D-045).
+    last_call_id: str | None = None
+    denied: set[str] = field(default_factory=set)
 
 
 class ClaudeAgentTracker:
@@ -221,7 +225,10 @@ class ClaudeAgentTracker:
         return callback
 
     async def _gate(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Pause/cancel safe point before a tool runs. Only ever stops, never approves."""
+        """Before a tool runs: the pause/cancel safe point, then the policy (D-045).
+
+        Only ever stops or asks a person; it never approves anything by itself.
+        """
         if self._client() is None:
             return {}
         s = self._session(str(data.get("session_id") or "session"))
@@ -234,7 +241,7 @@ class ClaudeAgentTracker:
             internal_error("claude_agent_sdk.gate", exc)
             return {}
         if keep_going:
-            return {}
+            return await self._policy(s, agent_id, data)
         return {
             "continue_": False,
             "stopReason": CANCELLED_REASON,
@@ -244,6 +251,28 @@ class ClaudeAgentTracker:
                 "permissionDecisionReason": CANCELLED_REASON,
             },
         }
+
+    async def _policy(self, s: _Session, agent_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        tool = str(data.get("tool_name") or "tool")
+        try:
+            await aguard_tool(
+                tool, data.get("tool_input"), run_id=s.run_id, agent_id=agent_id, team_id=s.team_id
+            )
+            return {}
+        except PolicyDenied as denied:
+            call_id = s.last_call_id or tool
+            s.denied.add(call_id)
+            self._tool_done(s, data, call_id, str(denied), force=True)
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": str(denied),
+                }
+            }
+        except Exception as exc:
+            internal_error("claude_agent_sdk.policy", exc)
+            return {}
 
     def _cancelled(self, s: _Session) -> bool:
         client = self._client()
@@ -296,6 +325,7 @@ class ClaudeAgentTracker:
         agent_id = self._agent_of(s, data)
         tool = str(data.get("tool_name") or "tool")
         call_id = str(tool_use_id or f"{tool}-{time.monotonic_ns()}")
+        s.last_call_id = call_id
         s.tool_t0[call_id] = time.monotonic()
         tool_input = data.get("tool_input") or {}
         if tool in SUBAGENT_TOOLS and isinstance(tool_input, dict):
@@ -342,11 +372,18 @@ class ClaudeAgentTracker:
         )
 
     def _tool_done(
-        self, s: _Session, data: dict[str, Any], tool_use_id: str | None, error: str | None
+        self,
+        s: _Session,
+        data: dict[str, Any],
+        tool_use_id: str | None,
+        error: str | None,
+        force: bool = False,
     ) -> None:
         agent_id = self._agent_of(s, data)
         tool = str(data.get("tool_name") or "tool")
         call_id = str(tool_use_id or tool)
+        if call_id in s.denied and not force:
+            return  # already recorded as denied by the policy
         t0 = s.tool_t0.pop(call_id, None)
         self._emit(
             s,

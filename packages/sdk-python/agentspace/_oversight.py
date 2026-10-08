@@ -96,7 +96,7 @@ def guard_tool(
     if decision.action == "allow":
         return decision
     if decision.action == "block":
-        raise PolicyDenied(tool, "blocked", decision)
+        raise _record(PolicyDenied(tool, "blocked", decision), run_id, agent_id, team_id)
 
     client = _api.get_client()
     ref = current_agent.get()
@@ -138,7 +138,37 @@ def guard_tool(
     if result.approved:
         return decision
     outcome: Outcome = "timeout" if result.decision == "timeout" else "rejected"
-    raise PolicyDenied(tool, outcome, decision, result.comment or result.error)
+    raise _record(
+        PolicyDenied(tool, outcome, decision, result.comment or result.error), rid, aid, tid
+    )
+
+
+def _record(
+    denied: PolicyDenied, run_id: str | None, agent_id: str | None, team_id: str | None
+) -> PolicyDenied:
+    """Every denial is an ``error`` event (kind PolicyDenied), so it shows in the office whatever
+    the framework does with the call afterwards."""
+    from agentspace import _api
+
+    try:
+        client = _api.get_client()
+        if client is not None:
+            ref = current_agent.get()
+            who: dict[str, Any] = {}
+            if run_id:
+                who["run_id"] = run_id
+            if agent_id or ref:
+                who["agent_id"] = agent_id or (ref.agent_id if ref else None)
+                who["team_id"] = team_id or (ref.team_id if ref else None)
+            client.emit(
+                "error",
+                {"message": truncate(str(denied), 2000), "kind": "PolicyDenied"},
+                summary=truncate(str(denied), 500),
+                **who,
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        internal_error("policy.record", exc)
+    return denied
 
 
 async def aguard_tool(

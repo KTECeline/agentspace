@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -44,6 +45,7 @@ from agentspace import _api
 from agentspace._client import AgentInfo
 from agentspace._control import Cancelled, adapter_checkpoint
 from agentspace._log import internal_error
+from agentspace._oversight import PolicyDenied, guard_tool
 from agentspace._util import new_id, slugify, truncate
 
 if TYPE_CHECKING:
@@ -515,7 +517,9 @@ class AgentSpaceCrewListener(BaseEventListener):
         self._status(run, ev, agent_id, "thinking")
 
     def _tool_finished(self, source: Any, ev: Any) -> None:
-        self._tool_done(ev, None)
+        # CrewAI reports a call our policy hook blocked as "finished", with our reason as output.
+        output = str(getattr(ev, "output", "") or "")
+        self._tool_done(ev, output if output in _recent_denials else None)
 
     def _tool_error(self, source: Any, ev: Any) -> None:
         self._tool_done(ev, str(getattr(ev, "error", "tool failed")))
@@ -636,9 +640,63 @@ def current_run_id() -> str | None:
     return run.run_id if run and not run.finished else None
 
 
+# ---------------- policy (D-045) ----------------
+
+_denied = threading.local()
+#: Messages of recent denials, to recognise blocked calls in "tool finished" events.
+_recent_denials: deque[str] = deque(maxlen=64)
+BLOCKED_PREFIX = "Tool execution blocked by hook"
+
+
+def _before_tool_call(context: Any) -> bool | None:
+    """CrewAI's global ``before_tool_call`` hook: returning False blocks the call."""
+    try:
+        listener = _listener
+        run = listener._run() if listener else None
+        role = getattr(getattr(context, "agent", None), "role", None)
+        agent_id = slugify(str(role)) if role else None
+        tool = str(getattr(context, "tool_name", "tool"))
+        guard_tool(
+            tool,
+            getattr(context, "tool_input", None),
+            run_id=run.run_id if run else None,
+            agent_id=agent_id,
+            team_id=run.team_id if run else None,
+        )
+        return None
+    except PolicyDenied as denied:
+        _denied.last = (str(getattr(context, "tool_name", "")), str(denied))
+        _recent_denials.append(str(denied))
+        return False
+    except Exception as exc:
+        internal_error("crewai.before_tool_call", exc)
+        return None
+
+
+def _after_tool_call(context: Any) -> str | None:
+    """CrewAI also runs ``after_tool_call`` hooks for blocked calls: tell the model why."""
+    try:
+        last = getattr(_denied, "last", None)
+        result = str(getattr(context, "tool_result", "") or "")
+        if (
+            last
+            and last[0] == str(getattr(context, "tool_name", ""))
+            and result.startswith(BLOCKED_PREFIX)
+        ):
+            _denied.last = None
+            return str(last[1])
+    except Exception as exc:
+        internal_error("crewai.after_tool_call", exc)
+    return None
+
+
 def instrument(client: Client | None = None) -> bool:
-    """Subscribe to CrewAI's event bus. Idempotent."""
+    """Subscribe to CrewAI's event bus and its tool hooks (policy). Idempotent."""
     global _listener
     if _listener is None:
         _listener = AgentSpaceCrewListener()
+        from crewai.hooks import register_after_tool_call_hook, register_before_tool_call_hook
+
+        register_before_tool_call_hook(_before_tool_call)
+        register_after_tool_call_hook(_after_tool_call)
     return True

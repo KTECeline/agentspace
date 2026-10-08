@@ -248,3 +248,54 @@ def test_step_checkpoint_pauses_crew(collector: FakeCollector) -> None:
     blocked = [e for e in ev if e["type"] == "agent.status" and e["data"]["status"] == "blocked"]
     assert blocked and blocked[0]["agent_id"] == "researcher"
     assert [e["data"]["status"] for e in ev if e["type"] == "run.finished"] == ["ok"]
+
+
+# ---------------- policy (D-045) ----------------
+
+
+def _crew_with_seen_messages() -> tuple[Any, list[Any]]:
+    from crew_app import ScriptedLLM, build_research_desk
+
+    seen: list[Any] = []
+    crew = build_research_desk()
+    for agent in crew.agents:
+        llm = agent.llm
+        assert isinstance(llm, ScriptedLLM)
+        original = llm.call
+
+        def call(messages: Any, *a: Any, _orig: Any = original, **kw: Any) -> str:
+            seen.append(messages)
+            return str(_orig(messages, *a, **kw))
+
+        object.__setattr__(llm, "call", call)
+    return crew, seen
+
+
+def test_policy_block_tells_the_model_why_and_is_recorded(collector: FakeCollector) -> None:
+    block = {"match": "web_search", "action": "block", "reason": "No web today."}
+    init_fast(collector.url, policy={"tools": [block]})
+    crew, seen = _crew_with_seen_messages()
+    crew.kickoff()
+    agentspace.flush()
+    crewai_event_bus.flush()
+    agentspace.flush()
+    text = json.dumps(seen)
+    assert "web_search is blocked by policy (rule web_search): No web today." in text
+    assert not collector.of_type("approval.requested")
+    (err,) = collector.of_type("error")
+    assert err["data"]["kind"] == "PolicyDenied" and err["agent_id"] == "researcher"
+    assert err["run_id"] == collector.of_type("run.started")[0]["run_id"]
+    # Any "finished" report of the blocked call (native tool calling) is a failure.
+    assert all(not r["data"]["ok"] for r in collector.of_type("tool.result"))
+
+
+def test_policy_review_is_asked_in_the_office(collector: FakeCollector) -> None:
+    init_fast(collector.url, policy={"tools": [{"match": "web_search", "action": "review"}]})
+    collector.on_approval = lambda e: ("approved", None)
+    crew, _ = _crew_with_seen_messages()
+    crew.kickoff()
+    agentspace.flush()
+    (req,) = collector.of_type("approval.requested")
+    assert req["agent_id"] == "researcher"
+    assert req["data"]["policy"]["tool"] == "web_search"
+    assert req["run_id"] == collector.of_type("run.started")[0]["run_id"]
