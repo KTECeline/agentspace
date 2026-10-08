@@ -34,6 +34,8 @@ export class Projector {
         event_count: 1,
         ...u,
         control: "running",
+        control_by: null,
+        control_reason: null,
         findings: finding,
       };
     } else {
@@ -50,7 +52,12 @@ export class Projector {
       run = { ...run, status: ev.data.status, finished_at: ev.ts, duration_ms: ev.data.duration_ms ?? null };
     } else if (ev.type === "run.control" && run.control !== "cancelled") {
       const action = ev.data.action;
-      run = { ...run, control: action === "pause" ? "paused" : action === "resume" ? "running" : "cancelled" };
+      run = {
+        ...run,
+        control: action === "pause" ? "paused" : action === "resume" ? "running" : "cancelled",
+        control_by: ev.data.by ?? null,
+        control_reason: ev.data.reason ?? null,
+      };
     }
     this.runs.set(rkey, run);
     this.runOrder.set(rkey, this.clock);

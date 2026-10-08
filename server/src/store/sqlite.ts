@@ -6,6 +6,7 @@ import type {
   AgentSpaceEvent,
   AgentState,
   AgentStatus,
+  ApprovalContext,
   ApprovalState,
   ApprovalStatus,
   RunControl,
@@ -15,7 +16,7 @@ import type {
 } from "@agentspace/spec-types";
 import { computeStats, type ErrorRow, type LlmRow, type StatsWindow } from "./stats.js";
 import type { BaselineRows } from "../detect/baseline.js";
-import type { ControlAction, ControlOutcome, InsertResult, ResolveOutcome, Store } from "./types.js";
+import type { ControlAction, ControlOptions, ControlOutcome, InsertResult, ResolveOutcome, Store } from "./types.js";
 
 /**
  * SQLite store (the default). better-sqlite3 is synchronous; the async methods simply return
@@ -92,6 +93,8 @@ export class SqliteStore implements Store {
         unpriced_calls INTEGER NOT NULL DEFAULT 0,
         findings    INTEGER NOT NULL DEFAULT 0,
         control     TEXT NOT NULL DEFAULT 'running',
+        control_by  TEXT,
+        control_reason TEXT,
         updated_at  INTEGER NOT NULL,
         PRIMARY KEY (workspace, run_id)
       );
@@ -111,12 +114,14 @@ export class SqliteStore implements Store {
         created_at  TEXT NOT NULL,
         expires_at  TEXT,
         resolved_at TEXT,
+        policy      TEXT,
+        context     TEXT,
         updated_at  INTEGER NOT NULL,
         PRIMARY KEY (workspace, approval_id)
       );
       CREATE INDEX IF NOT EXISTS approvals_status ON approvals (workspace, status, created_at);
     `);
-    // Databases created before run controls (4a), cost sources (D-037) and findings (D-044) existed.
+    // Databases created before run controls (4a), cost sources (D-037), findings (D-044) and policy (D-045).
     const addColumn = (table: string, column: string, type: string) => {
       const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
       if (!cols.some((c) => c.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
@@ -127,6 +132,10 @@ export class SqliteStore implements Store {
       addColumn(table, "unpriced_calls", "INTEGER NOT NULL DEFAULT 0");
       addColumn(table, "findings", "INTEGER NOT NULL DEFAULT 0");
     }
+    addColumn("runs", "control_by", "TEXT");
+    addColumn("runs", "control_reason", "TEXT");
+    addColumn("approvals", "policy", "TEXT");
+    addColumn("approvals", "context", "TEXT");
   }
 
   private prepare() {
@@ -170,12 +179,14 @@ export class SqliteStore implements Store {
       ),
       finishRun: db.prepare(`UPDATE runs SET status = @status, finished_at = @ts, duration_ms = @duration_ms WHERE workspace = @workspace AND run_id = @run_id`),
       controlRun: db.prepare(
-        `UPDATE runs SET control = @control WHERE workspace = @workspace AND run_id = @run_id AND control != 'cancelled'`,
+        `UPDATE runs SET control = @control, control_by = @by, control_reason = @reason
+         WHERE workspace = @workspace AND run_id = @run_id AND control != 'cancelled'`,
       ),
       requestApproval: db.prepare(
-        `INSERT OR IGNORE INTO approvals (workspace, approval_id, run_id, agent_id, team_id, reason, payload, created_at, expires_at, updated_at)
-         VALUES (@workspace, @approval_id, @run_id, @agent_id, @team_id, @reason, @payload, @created_at, @expires_at, @now)`,
+        `INSERT OR IGNORE INTO approvals (workspace, approval_id, run_id, agent_id, team_id, reason, payload, policy, created_at, expires_at, updated_at)
+         VALUES (@workspace, @approval_id, @run_id, @agent_id, @team_id, @reason, @payload, @policy, @created_at, @expires_at, @now)`,
       ),
+      setApprovalContext: db.prepare(`UPDATE approvals SET context = @context, updated_at = @now WHERE workspace = @workspace AND approval_id = @approval_id`),
       resolveApproval: db.prepare(
         `UPDATE approvals SET status = @status, comment = @comment, resolved_by = @resolved_by, resolved_at = @ts, updated_at = @now
          WHERE workspace = @workspace AND approval_id = @approval_id AND status = 'pending'`,
@@ -266,7 +277,7 @@ export class SqliteStore implements Store {
         s.finishRun.run({ ...run, ts: ev.ts, status: ev.data.status, duration_ms: ev.data.duration_ms ?? null });
         break;
       case "run.control":
-        s.controlRun.run({ ...run, control: controlAfter(ev.data.action) });
+        s.controlRun.run({ ...run, control: controlAfter(ev.data.action), by: ev.data.by ?? null, reason: ev.data.reason ?? null });
         break;
       case "approval.requested": {
         const expires = ev.data.timeout_s !== undefined ? new Date(Date.parse(ev.ts) + ev.data.timeout_s * 1000).toISOString() : null;
@@ -277,6 +288,7 @@ export class SqliteStore implements Store {
           team_id: ev.team_id,
           reason: ev.data.reason,
           payload: ev.data.payload === undefined ? null : JSON.stringify(ev.data.payload),
+          policy: ev.data.policy ? JSON.stringify(ev.data.policy) : null,
           created_at: ev.ts,
           expires_at: expires,
           now,
@@ -340,13 +352,13 @@ export class SqliteStore implements Store {
     })();
   }
 
-  async setControl(workspace: string, runId: string, action: ControlAction, opts: { by?: string; now?: Date }): Promise<ControlOutcome> {
+  async setControl(workspace: string, runId: string, action: ControlAction, opts: ControlOptions): Promise<ControlOutcome> {
     return this.db.transaction((): ControlOutcome => {
       const row = this.s.run.get(workspace, runId) as RunRow | undefined;
       if (!row) return { result: "not_found" };
       const current = row.control as RunControl;
       if (!controlAllowed(current, action)) return { result: "conflict", run: rowToRun(row) };
-      const changes = this.insertSync([controlEvent(workspace, runId, action, opts.by, opts.now ?? new Date())]);
+      const changes = this.insertSync([controlEvent(workspace, runId, action, opts.by, opts.now ?? new Date(), opts.reason, opts.findingId)]);
       return { result: "ok", run: rowToRun(this.s.run.get(workspace, runId) as RunRow), changes };
     })();
   }
@@ -382,6 +394,20 @@ export class SqliteStore implements Store {
       )
       .all(workspace, ...runs.map((r) => r.run_id)) as BaselineRows["agents"];
     return { runs, agents };
+  }
+
+  async escalatedRuns(workspace: string, runIds: string[]) {
+    if (!runIds.length) return [];
+    const rows = this.db
+      .prepare(`SELECT run_id FROM runs WHERE workspace = ? AND findings > 0 AND run_id IN (${runIds.map(() => "?").join(",")})`)
+      .all(workspace, ...runIds) as { run_id: string }[];
+    return rows.map((r) => r.run_id);
+  }
+
+  async setApprovalContext(workspace: string, approvalId: string, context: ApprovalContext) {
+    this.s.setApprovalContext.run({ workspace, approval_id: approvalId, context: JSON.stringify(context), now: Date.now() });
+    const row = this.s.approval.get(workspace, approvalId) as ApprovalRow | undefined;
+    return row && rowToApproval(row);
   }
 
   async run(workspace: string, runId: string) {
@@ -472,7 +498,15 @@ export function resolvedEvent(
   } as AgentSpaceEvent;
 }
 
-export function controlEvent(workspace: string, runId: string, action: ControlAction, by: string | undefined, now: Date): AgentSpaceEvent {
+export function controlEvent(
+  workspace: string,
+  runId: string,
+  action: ControlAction,
+  by: string | undefined,
+  now: Date,
+  reason?: string,
+  findingId?: string,
+): AgentSpaceEvent {
   const verb = { pause: "Paused", resume: "Resumed", cancel: "Cancelled" }[action];
   return {
     spec_version: "0.1",
@@ -485,7 +519,7 @@ export function controlEvent(workspace: string, runId: string, action: ControlAc
     team_id: null,
     parent_id: null,
     summary: `${verb}${by ? ` by ${by}` : ""}`.slice(0, 500),
-    data: { action, ...(by ? { by: by.slice(0, 256) } : {}) },
+    data: { action, ...(by ? { by: by.slice(0, 256) } : {}), ...(reason ? { reason: reason.slice(0, 500) } : {}), ...(findingId ? { finding_id: findingId } : {}) },
   } as AgentSpaceEvent;
 }
 
@@ -526,6 +560,8 @@ interface ApprovalRow {
   team_id: string | null;
   reason: string;
   payload: string | null;
+  policy: string | null;
+  context: string | null;
   status: string;
   comment: string | null;
   resolved_by: string | null;
@@ -552,5 +588,11 @@ export function rowToRun(row: RunRow): RunState {
 }
 export function rowToApproval(row: ApprovalRow): ApprovalState {
   const { updated_at: _u, ...rest } = row as ApprovalRow & { updated_at?: number };
-  return { ...rest, payload: row.payload === null ? null : (JSON.parse(row.payload) as unknown), status: row.status as ApprovalStatus };
+  return {
+    ...rest,
+    payload: row.payload === null ? null : (JSON.parse(row.payload) as unknown),
+    policy: row.policy ? (JSON.parse(row.policy) as ApprovalState["policy"]) : null,
+    context: row.context ? (JSON.parse(row.context) as ApprovalState["context"]) : null,
+    status: row.status as ApprovalStatus,
+  };
 }

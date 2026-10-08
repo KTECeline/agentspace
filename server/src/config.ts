@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { parsePolicy, type Policy } from "@agentspace/spec-types";
 import { loadDetectorConfig } from "./detect/engine.js";
 import type { DetectorConfig } from "./detect/types.js";
 
@@ -27,6 +29,8 @@ export interface Config {
   pricesFile: string | null;
   /** Detector settings (null: off). AGENTSPACE_DETECTORS=off, AGENTSPACE_DETECTORS_FILE (D-044). */
   detectors: DetectorConfig | null;
+  /** Oversight policy from AGENTSPACE_POLICY_FILE (D-045); null when none. */
+  policy: Policy | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -46,5 +50,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicReadonly: ["1", "true", "yes"].includes((env.AGENTSPACE_PUBLIC_READONLY ?? "").toLowerCase()),
     pricesFile: env.AGENTSPACE_PRICES_FILE || null,
     detectors: loadDetectorConfig(env),
+    policy: loadPolicy(env.AGENTSPACE_POLICY_FILE),
   };
+}
+
+/** Read and validate the policy file. A bad policy stops the collector: guessing would be unsafe. */
+export function loadPolicy(path: string | undefined): Policy | null {
+  if (!path) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    throw new Error(`AGENTSPACE_POLICY_FILE: can’t read ${path}: ${(err as Error).message}`, { cause: err });
+  }
+  const out = parsePolicy(raw);
+  if (!out.ok) throw new Error(`AGENTSPACE_POLICY_FILE: ${out.errors.map((e) => `${e.path || "(top)"} ${e.message}`).join("; ")}`);
+  return out.policy;
 }

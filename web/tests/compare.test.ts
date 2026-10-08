@@ -111,6 +111,8 @@ describe("pickBaseline", () => {
     cost_estimated_usd: 0,
     unpriced_calls: 0,
     control: "running",
+    control_by: null,
+    control_reason: null,
     findings: 0,
   });
 

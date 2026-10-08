@@ -66,6 +66,8 @@ describe("approvals inbox", () => {
     created_at: created,
     expires_at: null,
     resolved_at: resolved,
+    policy: null,
+    context: null,
   });
 
   it("lists pending oldest first, then the latest decisions", () => {

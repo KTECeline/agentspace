@@ -54,6 +54,10 @@ export interface RunState {
   cost_estimated_usd: number;
   unpriced_calls: number;
   control: RunControl;
+  /** Who set the current control state ("operator", "detector:failure_loop", ...). */
+  control_by: string | null;
+  /** Why, when the collector paused the run itself (D-045). */
+  control_reason: string | null;
   /** `anomaly.detected` events in this run (D-044). */
   findings: number;
 }
@@ -76,6 +80,43 @@ export interface ApprovalState {
   created_at: string;
   expires_at: string | null;
   resolved_at: string | null;
+  /** Set when a policy rule asked for this review (from the event, D-045). */
+  policy: ApprovalPolicy | null;
+  /** Evidence the collector attached when the request arrived (D-045). Null until computed. */
+  context: ApprovalContext | null;
+}
+
+export interface ApprovalPolicy {
+  tool: string;
+  action: "review";
+  rule?: string;
+  source?: "code" | "collector";
+  reason?: string;
+  escalated?: boolean;
+  arguments_hash?: string;
+}
+
+/** What was true when an approval was asked: the run so far against the workflow's usual runs. */
+export interface ApprovalContext {
+  /** Detector findings in the run so far, oldest first. */
+  findings: { detector: string; severity: "info" | "warning" | "critical"; message: string }[];
+  /** The asking agent's tool calls in this run so far, and its median over the workflow's recent successful runs. */
+  agent_tool_calls: number;
+  baseline_tool_calls_p50: number | null;
+  /** How often this tool was called in the run so far (this call included). */
+  tool_calls: number;
+  run_cost_usd: number;
+  baseline_cost_p50: number | null;
+  /** Runs the baseline is based on (0: no baseline yet). */
+  baseline_runs: number;
+}
+
+/** GET /v1/workspaces/:ws/policy */
+export interface PolicyResponse {
+  /** The collector's policy (AGENTSPACE_POLICY_FILE), or null when it has none. */
+  policy: import("./policy.js").Policy | null;
+  /** Of the runs asked about (?runs=), those with detector findings: rules' on_findings apply. */
+  escalated: string[];
 }
 
 /** Prices in USD per 1M tokens. Cached tokens are part of the input tokens. */
@@ -209,6 +250,8 @@ export interface IngestResponse {
   errors: { index: number; id?: string; message: string }[];
   /** Runs in this batch that an operator paused or cancelled (the SDK acts on these). */
   controls?: Record<string, RunControl>;
+  /** Runs in this batch that have detector findings, so policy rules' on_findings apply (D-045). */
+  escalated?: string[];
 }
 
 /** Server → browser messages on GET /v1/ws?workspace=... */

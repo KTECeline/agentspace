@@ -108,6 +108,11 @@ export class DetectorEngine {
     return { ctx, checkers, nameLooked: false, name: null, sent: new Set() };
   }
 
+  /** The workflow's baseline (cached), also used for approval evidence (D-045). */
+  baselineFor(workspace: string, name: string): Promise<Baseline | null> {
+    return this.baseline(workspace, name);
+  }
+
   private baseline(workspace: string, name: string): Promise<Baseline | null> {
     const k = `${workspace}\u0000${name}`;
     const hit = this.baselines.get(k);

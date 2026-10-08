@@ -79,7 +79,9 @@
     "cost_estimated_usd": 0,
     "unpriced_calls": 9,
     "findings": 0,
-    "control": "running"
+    "control": "running",
+    "control_by": null,
+    "control_reason": null
    },
    {
     "workspace": "default",
@@ -97,7 +99,9 @@
     "cost_estimated_usd": 0.00092,
     "unpriced_calls": 0,
     "findings": 3,
-    "control": "running"
+    "control": "running",
+    "control_by": null,
+    "control_reason": null
    },
    {
     "workspace": "default",
@@ -108,14 +112,16 @@
     "started_at": "2026-09-23T10:01:00Z",
     "finished_at": null,
     "duration_ms": null,
-    "event_count": 2,
+    "event_count": 3,
     "tokens_in": 0,
     "tokens_out": 0,
     "cost_usd": 0,
     "cost_estimated_usd": 0,
     "unpriced_calls": 0,
     "findings": 1,
-    "control": "running"
+    "control": "paused",
+    "control_by": "detector:failure_loop",
+    "control_reason": "run_tests failed 3 times in a row"
    }
   ]
  }

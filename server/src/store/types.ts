@@ -1,6 +1,7 @@
 import type {
   AgentSpaceEvent,
   AgentState,
+  ApprovalContext,
   ApprovalState,
   ApprovalStatus,
   RunControl,
@@ -26,6 +27,14 @@ export type ResolveOutcome =
   | { result: "not_found" };
 
 export type ControlAction = "pause" | "resume" | "cancel";
+
+export interface ControlOptions {
+  by?: string;
+  now?: Date;
+  /** Why (the collector pausing a run for a finding), and the finding's event id. */
+  reason?: string;
+  findingId?: string;
+}
 
 export type ControlOutcome =
   | { result: "ok"; run: RunState; changes: InsertResult }
@@ -71,7 +80,11 @@ export interface Store {
   /** Pending approvals whose deadline has passed. */
   expiredApprovals(now?: Date): Promise<ApprovalState[]>;
 
-  setControl(workspace: string, runId: string, action: ControlAction, opts: { by?: string; now?: Date }): Promise<ControlOutcome>;
+  setControl(workspace: string, runId: string, action: ControlAction, opts: ControlOptions): Promise<ControlOutcome>;
+  /** Of `runIds`, the runs with detector findings (policy on_findings applies to them, D-045). */
+  escalatedRuns(workspace: string, runIds: string[]): Promise<string[]>;
+  /** Attach the evidence computed when an approval was requested (D-045). */
+  setApprovalContext(workspace: string, approvalId: string, context: ApprovalContext): Promise<ApprovalState | undefined>;
   /** Control state of the given runs (runs that are unknown or running are omitted). */
   controls(workspace: string, runIds: string[]): Promise<Record<string, RunControl>>;
 

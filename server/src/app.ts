@@ -3,16 +3,20 @@ import { createGunzip } from "node:zlib";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
-import type {
-  AgentSpaceEvent,
-  ApprovalState,
-  ApprovalStatus,
-  IngestResponse,
-  PriceTable,
-  RunControl,
-  ServerInfo,
-  StoredEvent,
-  WsServerMessage,
+import {
+  shouldPause,
+  type AgentSpaceEvent,
+  type ApprovalContext,
+  type ApprovalState,
+  type ApprovalStatus,
+  type IngestResponse,
+  type PolicyResponse,
+  type PriceTable,
+  type RunControl,
+  type ServerInfo,
+  type SourcedPolicy,
+  type StoredEvent,
+  type WsServerMessage,
 } from "@agentspace/spec-types";
 import { Auth, bearer } from "./auth.js";
 import type { Config } from "./config.js";
@@ -42,6 +46,7 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
   const auth = new Auth(config);
   const pricer = loadPricer(config.pricesFile);
   const hub = new Hub();
+  const collectorPolicy: SourcedPolicy[] = config.policy ? [{ source: "collector", policy: config.policy }] : [];
   const detectors = new DetectorEngine(db, config.detectors, { warn: (obj, msg) => app.log.warn(obj, msg) });
   const waiters = new EventEmitter();
   waiters.setMaxListeners(0);
@@ -80,19 +85,71 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
     }
     const changes = await db.insert(valid);
     publish(changes);
-    await detect(changes.inserted);
+    await afterInsert(changes.inserted);
     return { accepted: changes.inserted.length, duplicates: changes.duplicates, rejected: events.length - valid.length };
   }
 
-  /** Run the detectors over newly stored events and store their findings. Never fails an ingest. */
+  /** Work that follows every insert. Never fails an ingest: problems are logged. */
+  async function afterInsert(inserted: StoredEvent[]): Promise<void> {
+    if (!inserted.length) return;
+    await detect(inserted);
+    await attachApprovalContext(inserted);
+  }
+
+  /** Run the detectors over newly stored events, store their findings, and pause runs the policy says to (D-044, D-045). */
   async function detect(inserted: StoredEvent[]): Promise<void> {
-    if (!detectors.enabled || !inserted.length) return;
+    if (!detectors.enabled) return;
     try {
       const findings = await detectors.observe(inserted);
-      if (findings.length) publish(await db.insert(findings));
+      if (!findings.length) return;
+      const stored = await db.insert(findings);
+      publish(stored);
+      for (const f of stored.inserted) {
+        if (f.type !== "anomaly.detected" || !shouldPause(collectorPolicy, f.data)) continue;
+        const out = await db.setControl(f.workspace, f.run_id, "pause", { by: `detector:${f.data.detector}`, reason: f.data.message, findingId: f.id });
+        if (out.result === "ok") publish(out.changes); // a conflict means it's already paused or cancelled
+      }
     } catch (err) {
       app.log.warn({ err }, "detectors failed");
     }
+  }
+
+  /** Evidence for policy reviews: the run so far against the workflow's usual runs (D-045). */
+  async function attachApprovalContext(inserted: StoredEvent[]): Promise<void> {
+    for (const e of inserted) {
+      if (e.type !== "approval.requested" || !e.data.policy) continue;
+      try {
+        const context = await approvalContext(e.workspace, e.run_id, e.agent_id, e.data.policy.tool);
+        const approval = await db.setApprovalContext(e.workspace, e.data.approval_id, context);
+        if (approval) publish({ inserted: [], duplicates: 0, agents: [], runs: [], approvals: [approval] });
+      } catch (err) {
+        app.log.warn({ err, approval: e.data.approval_id }, "approval context failed");
+      }
+    }
+  }
+
+  async function approvalContext(workspace: string, runId: string, agentId: string | null, tool: string): Promise<ApprovalContext> {
+    const [events, run] = await Promise.all([db.runEvents(workspace, runId, 0, 50_000), db.run(workspace, runId)]);
+    const baseline = run?.name ? await detectors.baselineFor(workspace, run.name) : null;
+    const findings: ApprovalContext["findings"] = [];
+    let agentCalls = 0;
+    let toolCalls = 0;
+    for (const e of events) {
+      if (e.type === "anomaly.detected") findings.push({ detector: e.data.detector, severity: e.data.severity, message: e.data.message });
+      else if (e.type === "tool.call" && e.agent_id === agentId) {
+        agentCalls += 1;
+        if (e.data.tool_name === tool) toolCalls += 1;
+      }
+    }
+    return {
+      findings: findings.slice(-20),
+      agent_tool_calls: agentCalls,
+      baseline_tool_calls_p50: agentId ? (baseline?.toolCalls[agentId]?.p50 ?? null) : null,
+      tool_calls: toolCalls,
+      run_cost_usd: run?.cost_usd ?? 0,
+      baseline_cost_p50: baseline?.cost?.p50 ?? null,
+      baseline_runs: baseline?.runs ?? 0,
+    };
   }
 
   function waitFor(key: string, seconds: number): Promise<void> {
@@ -189,15 +246,18 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
 
     const changes = await db.insert(valid);
     publish(changes);
-    await detect(changes.inserted);
+    await afterInsert(changes.inserted);
 
     // Tell the SDK about runs in this batch that an operator paused or cancelled.
     const controls: Record<string, RunControl> = {};
     for (const [ws, events] of groupBy(valid, (e) => e.workspace)) {
       Object.assign(controls, await db.controls(ws, [...new Set(events.map((e) => e.run_id))]));
     }
+    const escalated: string[] = [];
+    for (const [ws, events] of groupBy(valid, (e) => e.workspace)) escalated.push(...(await db.escalatedRuns(ws, [...new Set(events.map((e) => e.run_id))])));
     const res: IngestResponse = { accepted: changes.inserted.length, duplicates: changes.duplicates, rejected, errors };
     if (Object.keys(controls).length) res.controls = controls;
+    if (escalated.length) res.escalated = escalated;
     return res;
   });
 
@@ -325,6 +385,16 @@ export async function buildApp({ config, store, logger = true }: AppDeps): Promi
       return out.run;
     },
   );
+
+  /** The collector's policy, and which of ?runs= are escalated by findings. SDKs fetch it (D-045). */
+  app.get<WsParams & { Querystring: { runs?: string } }>("/v1/workspaces/:ws/policy", async (req, reply) => {
+    const { ws } = req.params;
+    const tok = token(req);
+    if (!auth.canRead(tok, ws) && !auth.canIngest(tok, ws)) return deny(reply, 401, "Reading the policy");
+    const runs = (req.query.runs ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 100);
+    const res: PolicyResponse = { policy: config.policy, escalated: await db.escalatedRuns(ws, runs) };
+    return res;
+  });
 
   /** SDKs poll this while paused. ?runs=a,b&wait=N returns when any of them changes. */
   app.get<WsParams & { Querystring: { runs?: string; wait?: string } }>("/v1/workspaces/:ws/controls", async (req, reply) => {

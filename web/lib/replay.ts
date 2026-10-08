@@ -119,6 +119,9 @@ export function approvalsFrom(events: AgentSpaceEvent[]): ApprovalState[] {
         created_at: e.ts,
         expires_at: e.data.timeout_s !== undefined ? new Date(Date.parse(e.ts) + e.data.timeout_s * 1000).toISOString() : null,
         resolved_at: null,
+        policy: e.data.policy ?? null,
+        // The collector's evidence isn't in the events; a replay shows the rule only.
+        context: null,
       });
     } else if (e.type === "approval.resolved") {
       const a = out.get(e.data.approval_id);
