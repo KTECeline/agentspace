@@ -44,7 +44,9 @@ class PolicyDenied(Exception):
                 text += f": {comment}"
         else:
             text = f"{tool} wasn't approved in time"
-        super().__init__(text + ". Don't retry it; choose another way or report back.")
+        if not text.endswith((".", "!", "?")):
+            text += "."
+        super().__init__(text + " Don't retry it; choose another way or report back.")
 
 
 def decide(tool: str, *, run_id: str | None = None, agent_id: str | None = None) -> PolicyDecision:

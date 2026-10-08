@@ -209,3 +209,15 @@ def test_aguard_tool_waits_without_blocking_the_loop(collector: FakeCollector) -
 
     action, ticks = asyncio.run(main())
     assert action == "review" and ticks > 10
+
+
+def test_denial_message_punctuation() -> None:
+    from agentspace._oversight import PolicyDenied
+    from agentspace._policy import PolicyDecision
+
+    with_dot = PolicyDecision("block", "deploy", "code", True, False, "No deploys on Fridays.")
+    plain = PolicyDecision("block", "deploy", "code", True, False, "no deploys")
+    assert str(PolicyDenied("deploy", "blocked", with_dot)).startswith(
+        "deploy is blocked by policy (rule deploy): No deploys on Fridays. Don't retry"
+    )
+    assert "no deploys. Don't retry" in str(PolicyDenied("deploy", "blocked", plain))
