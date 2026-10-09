@@ -371,3 +371,16 @@ What broke and what changed:
 - **Review evidence is computed by the collector** when an `approval.requested` with `data.policy` arrives: the run's findings, the agent's tool calls and the run's cost against the workflow's median (the D-044 baselines), and the tool's calls so far. It's numbers and names only, stored on the approval (`context`), and safe in public read-only mode. The call under review is counted only if it was recorded before the review (the Claude Agent SDK adapter records `tool.call` first; `guard_tool` alone doesn't).
 
 **Why:** the point of 6.4 is "pause the next run before the risky tool runs", explained well enough that a person can decide in seconds. Rules written by people stay the source of truth; detectors only add attention. Enforcing at each framework's own interception point keeps the model in the loop (it learns why and can change course) instead of killing the run.
+
+## D-046 · The failure story: one scripted loop, recorded, comparable offline (2026-10-09)
+**Decision:**
+- **One story, on an existing example.** `--story` in `examples/langgraph-dev-team` rather than a new example: it already has a scripted model, `run_tests` and a write that's worth guarding. Five good runs first (the detectors' `min_runs`), then a scripted regression whose replies branch once on what a person decided (reject → the Engineer gives up and the run fails; approve → the right fix).
+- **The collector's policy drives it** (`policy.json`, mounted by `compose.story.yml`): `on_findings.pause: ["failure_loop"]` and `write_file: allow, on_findings: review`. Pausing on findings only works in the collector (D-045), so the story needs that file; without it the story still runs, but nothing pauses or asks.
+- **Deterministic timing:** in story mode the example flushes after each tool result. Detection runs before the ingest response is built, so the pause comes back in that response and the next model call stops. A real model's latency gives the same effect.
+- **Only the Engineer's failing tests are tool failures.** Triage reproducing the bug is expected, so it isn't one; otherwise **First error** would point at the reproduction, not the regression.
+- **Review evidence survives replays:** the collector computes it on the approval row, not in an event (D-045), so recordings carry it in an optional `approvals` list and stored-run replays fetch `…/approvals?run=`. A test fails if a bundled recording has a policy review without evidence.
+- **Compare works on recordings** (`/demo/compare`): `CompareView` takes a source descriptor (collector or bundled recordings), so the public demo can show the whole loop without a collector (D-041 still holds: no API routes, no collector calls).
+- **Review requests say what, the card says why:** the request text is "Run write_file? <rule reason>"; that it was escalated by findings is in `policy.escalated` and shown next to the evidence, not repeated in the title.
+- **Wording:** the SDKs say "run paused" (not "by an operator"): a detector may have paused it; the run bar says who.
+
+**Why:** the launch needs one story that shows the loop (fail → find → inspect → compare → pause → decide → replay) in a few minutes, the same way live and in the public demo, and that can't drift: it's scripted, recorded, covered by CI (with no collector) and by tests over the recordings.

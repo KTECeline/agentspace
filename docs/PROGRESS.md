@@ -248,7 +248,7 @@ CI has 15 jobs, including the secret scan and the Docker build.
 - The Postgres store is still deferred.
 - The OTLP port 4318 and the label glitch while the 3D office loads are good-first-issue drafts.
 
-## Phase 6: Debug and oversee 🚧 (started 2026-10-06)
+## Phase 6: Debug and oversee ✅ (2026-10-09; `make demo-check` pending)
 
 Direction approved 2026-10-06 (D-042): reposition from "a live office for agent teams" to **"debug, observe and control multi-agent systems"**. The office stays as the place incidents show up. The goal is a working loop: something fails → find where → inspect it → compare it with a good run → pause the next one before it repeats → replay. Launch waits for this phase, because the GIF and the video should show that loop.
 
@@ -285,7 +285,17 @@ Direction approved 2026-10-06 (D-042): reposition from "a live office for agent 
   - **Docs:** `/docs/policy`, plus the SDK, integration, self-hosting and API pages.
 
   Checked by hand in the browser against a collector with a policy file: six good `ship-feature` runs, then a failing one. `failure_loop` paused it (shown in the run bar), the Reviewer's `deploy` review showed 7 tool calls against a usual 1 and the five findings, and approving from the card reached the SDK. Tests: Python core 141 → 144 (+4 LangGraph, +3 OpenAI Agents, +2 CrewAI, +2 Claude Agent SDK), TS SDK 27 → 34, web 78 → 83.
-- [ ] **6.5 Demo and story:** one scripted failure scenario (fail → locate → inspect → compare → pause → reject → replay) as an example and a `/demo` recording; rewrite `docs/launch/video.md`, the README tagline and the docs landing page.
+- [x] **6.5 Demo and story** (2026-10-09, D-046).
+  - **The story:** `examples/langgraph-dev-team --story` (`make demo-story`): five good runs, then one where the Engineer's fix is wrong and it re-runs the failing tests. `failure_loop` pauses the run (collector policy `policy.json`, Compose override `compose.story.yml`); after Resume, the next `write_file` needs a person (`on_findings: review`); Reject ends the run as failed, Approve lets the right fix in. CI runs it with no collector.
+  - **Replays keep the evidence:** `GET …/approvals?run=`; `/replay` merges it in; recordings carry an optional `approvals` list (`record.mjs`).
+  - **`/demo/compare`:** `CompareView` reads from a collector or the bundled recordings; `/demo?event=` opens a recording paused on an event, on the trace. Allowed in public demo mode (no collector calls).
+  - **Recordings:** `story-failure` (the `/demo` default) and `story-good`.
+  - **Fixes found on the way:** the SDKs said "paused by an operator" when a detector paused the run; review requests repeated the escalation note; a false "wasn't checked" warning after `guard_tool()` (new `agentspace.adapters.langgraph.guard_tool()` for your own tool loops); the approval card showed "$0 · usually $0" for unpriced models.
+  - **Docs:** README tagline and "What you get", docs landing page, "The failure story" in `/docs/debugging`, `docs/launch/video.md` rewritten around the loop, package descriptions.
+
+  Checked by hand: the story live against a collector (reject and approve, both endings), and in the browser from the recordings alone (`/demo`: findings, the pause, the review with evidence; `/demo/compare`: ok → error, first difference at the Engineer's failing `run_tests`; "Open in replay" lands on it with "expected 8.0, got 5.0"). Tests: Python 146 (+2), web 98 (+15 over 6.4), collector 127, TS SDK 34. `make demo-check` not run in this session (it recreates the local Docker containers).
+
+**Phase 6 done-check:** met except `make demo-check`, which still needs a run. The scripted failure runs end to end live and as the `/demo` recording; detectors flag it, the trace shows the failing step, the comparison shows what changed, and the policy pauses the run and puts the next risky tool call in front of a person with evidence. (The pause applies to the run that loops, not to a later run: that's how `on_findings.pause` works, D-045.)
 
 ### Out of scope for this phase (D-042)
 - LLM-written root-cause explanations (they need full content and an LLM inside the collector).

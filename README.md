@@ -1,6 +1,6 @@
 # AgentSpace
 
-**A live office for your AI agent teams.** Add two lines to your multi-agent app and watch every agent work: who is thinking, which tool is running, who handed off to whom, and what it cost.
+**Debug, observe and control your multi-agent systems.** When a run goes wrong, AgentSpace shows you where, compares it with a run that went right, and can pause the next one before the risky tool runs. Add two lines to your app, and every agent works at a desk in a live office, so incidents show up where you're already looking.
 
 ![AgentSpace: a LangGraph dev team (Manager, Triage, Engineer) at their desks in a cozy isometric office, with a live event log](docs/assets/office-3d.jpg)
 
@@ -56,10 +56,20 @@ agentspace.init()                    # LangGraph, CrewAI and OpenAI Agents SDK a
 
 Want to see it without writing any code?
 
-- **Recorded demo:** open http://localhost:4801/demo. It replays recorded runs of every example (pick one from the *Scenario* menu) and needs no collector and no API key.
+- **Recorded demo:** open http://localhost:4801/demo. It opens on the **failure story**: a run that goes wrong, gets paused by a detector, and is stopped by a person. **Compare** puts it next to a good run. The *Scenario* menu has a recording of every example. No collector, no API key.
+- **The failure story, live** (no API key): `make demo-story`, then follow [the walkthrough](examples/langgraph-dev-team#the-failure-story---story).
 - **Live example team** (no API key): `cd examples/langgraph-dev-team && uv run python main.py --fake --runs 0`
 
 ## What you get
+
+**When something goes wrong**
+
+- **Detectors** flag a run while it happens: an agent repeating the same call, a tool failing again and again, two agents passing work back and forth, a run far above its usual tool calls or cost. Each finding says what it saw, with the numbers. No LLM involved, and nothing is read from prompts ([detectors](web/content/docs/detectors.md)).
+- **An oversight policy** you write: which tools run freely, which need a person, which never run. Findings can make it stricter for a run that looks wrong (review a write, or pause the run), never looser. The approval card shows why it's asking: the rule, the findings, and this run against the usual ([policy](web/content/docs/policy.md)).
+- **A trace of every run**, tied to the replay: steps, model and tool calls, handoffs and approvals as a tree, with **First error** to jump to what broke.
+- **Run comparison**: the run next to the last good run of the same workflow. What changed (outcome, path, calls, cost, failures) and the first point where they stopped doing the same thing ([debugging](web/content/docs/debugging.md)).
+
+**Every day**
 
 - **A live 3D office.** Each team gets its own room, laid out automatically; desks never move when new agents join. Every agent is a little bean at a desk that animates by status (thinking, typing at a tool, waiting, done, failed). An agent that needs a human glows, and handoffs fly between desks as glowing packets.
 - **An agent panel.** Click any agent to see its current step, its tool calls (with durations and failures), tokens, cost, model, and its own live log.
@@ -77,7 +87,7 @@ Want to see it without writing any code?
 
 ## How it compares
 
-AgentSpace is a **live operations view** for agent teams: watch them work, step in, and see what they cost. It isn't an evaluation or prompt-management platform, and it works alongside one: it speaks OpenTelemetry, so the same spans can go to both.
+AgentSpace is a **live operations view** for agent teams: watch them work, find out why a run went wrong, step in before it repeats, and see what they cost. It isn't an evaluation or prompt-management platform, and it works alongside one: it speaks OpenTelemetry, so the same spans can go to both.
 
 | | AgentSpace | [Langfuse](https://langfuse.com) | [LangSmith](https://www.langchain.com/langsmith) | [pixel-agents](https://github.com/pablodelucca/pixel-agents) |
 |---|---|---|---|---|
@@ -123,7 +133,7 @@ Every example runs without an API key (`--fake`, or `--replay`) and has a real m
 
 | Example | Framework | What you'll see |
 |---|---|---|
-| [langgraph-dev-team](examples/langgraph-dev-team) | LangGraph | Manager → Triage → Engineer fix a seeded bug |
+| [langgraph-dev-team](examples/langgraph-dev-team) | LangGraph | Manager → Triage → Engineer fix a seeded bug; `--story`: one run goes wrong, gets paused and stopped |
 | [crewai-research-desk](examples/crewai-research-desk) | CrewAI | Researcher → Fact Checker → Writer, with a search tool |
 | [openai-agents-handoffs](examples/openai-agents-handoffs) | OpenAI Agents SDK | Triage hands off to Billing, which looks up an invoice |
 | [claude-agent-sdk-support](examples/claude-agent-sdk-support) | Claude Agent SDK | a subagent, and a refund waiting for your approval |
@@ -185,7 +195,7 @@ The **Costs** page (`/dashboard`, linked from the office header) reads `GET /v1/
 
 ### Replay
 
-Click **Replay** next to the latest run in the office, or on any run in the Costs page's run table (`/replay?run=<id>`). The office plays the run's stored events at 1x, 4x or 16x. The scrubber marks errors, handoffs, approvals and pause/cancel, with buttons to jump to the next error or handoff. Pauses longer than 3 seconds are shortened. `/demo` plays its recordings the same way.
+Click **Replay** next to the latest run in the office, or on any run in the Costs page's run table (`/replay?run=<id>`). The office plays the run's stored events at 1x, 4x or 16x. The scrubber marks errors, findings, handoffs, approvals and pause/cancel, with buttons to jump to the next error, finding or handoff. The **Trace** tab shows the run as a tree, and **Compare** puts it next to a good run. Pauses longer than 3 seconds are shortened. `/demo` plays its recordings the same way.
 
 ### Securing the collector
 
@@ -222,6 +232,7 @@ Repo layout: `spec/` (event schema) · `packages/sdk-python` · `packages/spec-t
 3. ✅ Adapters for the Claude Agent SDK, CrewAI, the OpenAI Agents SDK and Claude Code hooks; OTLP ingest; TypeScript SDK
 4. Human approvals from the office, pause/cancel, auth, cost estimates and dashboard, replay timeline: built, in review (Postgres deferred)
 5. Published overhead benchmarks, releases to PyPI and npm, docs site, public demo
+6. ✅ Debug and oversee: run trace and comparison, detectors, oversight policy (pause on findings, reviews with evidence), the failure-story demo
 
 ## License
 

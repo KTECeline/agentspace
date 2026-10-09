@@ -1,7 +1,7 @@
 [project]
 name = "agentspace-sdk"
 version = "0.1.0.dev0"
-description = "Live office for AI agent teams: see every agent think, call tools, hand off, and cost money."
+description = "Debug, observe and control multi-agent systems: a live office for your agent teams, with detectors, an oversight policy and run comparison."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"

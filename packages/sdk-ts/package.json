@@ -1,7 +1,7 @@
 {
   "name": "agentspace-sdk",
   "version": "0.1.0-dev.0",
-  "description": "AgentSpace TypeScript SDK: a live office for your AI agent teams.",
+  "description": "AgentSpace TypeScript SDK: debug, observe and control multi-agent systems.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.cjs",

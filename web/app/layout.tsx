@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AgentSpace",
-  description: "A live office for your AI agent teams.",
+  description: "Debug, observe and control multi-agent systems, in a live office for your agent teams.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
