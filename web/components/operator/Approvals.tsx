@@ -204,7 +204,8 @@ function WhyAsked({ approval }: { approval: ApprovalState }) {
         <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
         <span className="min-w-0">
           <span className="font-medium">{why.rule}</span>
-          {why.reason && <span className="text-muted"> · {why.reason}</span>}
+          {/* The SDKs put the rule's reason in the request itself: don't say it twice. */}
+          {why.reason && !approval.reason.includes(why.reason) && <span className="text-muted"> · {why.reason}</span>}
         </span>
       </p>
       {why.escalated && (

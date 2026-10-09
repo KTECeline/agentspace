@@ -30,9 +30,11 @@ for path in / /demo /demo/compare /dashboard "/replay?run=none" /compare; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "$WEB$path")
   [ "$code" = 200 ] || { echo "FAIL: GET $path -> $code"; exit 1; }
 done
-curl -fsS "$WEB/recordings/dev-team.json" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["format"]=="agentspace-recording" and len(r["events"])>10' \
-  || { echo "FAIL: recording missing or invalid"; exit 1; }
-echo "ok: /, /demo, /demo/compare, the recording, /dashboard, /replay and /compare are served"
+for rec in story-failure story-good dev-team; do
+  curl -fsS "$WEB/recordings/$rec.json" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["format"]=="agentspace-recording" and len(r["events"])>10' \
+    || { echo "FAIL: recording $rec missing or invalid"; exit 1; }
+done
+echo "ok: /, /demo, /demo/compare, the recordings, /dashboard, /replay and /compare are served"
 
 step "Approvals and run controls"
 AGENTSPACE_URL="$COLLECTOR" scripts/controls_check.sh

@@ -4,11 +4,11 @@ import { recordingById } from "@/lib/recordings";
 
 export const metadata: Metadata = {
   title: "AgentSpace demo",
-  description: "A recorded run of a LangGraph dev team, replayed in the AgentSpace office. No setup needed.",
+  description: "Recorded multi-agent runs replayed in the AgentSpace office: one that goes wrong, gets paused and is stopped by a person, and the good runs it's compared with. No setup needed.",
 };
 
 /**
- * Recorded demo: plays /recordings/dev-team.json in a loop with no collector.
+ * Recorded demo: plays the failure story (/recordings/story-failure.json) in a loop with no collector.
  *   ?scenario=crewai  pick a bundled recording (see lib/recordings.ts)
  *   ?speed=2        play faster
  *   ?event=<id>     open the recording paused on this event (links from /demo/compare)

@@ -122,8 +122,7 @@ def guard_tool(
         reason = f"Run {tool}?"
         if decision.reason:
             reason += f" {decision.reason}"
-        if decision.escalated:
-            reason += " (asked because this run has detector findings)"
+        # Escalation travels in policy.escalated; the office says it next to the evidence.
     except Exception as exc:  # pragma: no cover - defensive
         internal_error("guard_tool", exc)
         payload, reason = {"tool": tool}, tool

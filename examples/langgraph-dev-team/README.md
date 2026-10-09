@@ -33,6 +33,7 @@ uv run python main.py
 | `--latency S` | Delay per fake model call, so the office has time to animate (default 0.8 s). |
 | `--story` | The failure story (below). Scripted, no API key. |
 | `--baseline N` | With `--story`: how many good runs come first (default 5, the detectors' minimum). |
+| `--baseline-latency S` | With `--story`: the fake model's delay in the good runs (default 0.05 s, so they're quick). |
 
 ## The failure story (`--story`)
 

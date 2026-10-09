@@ -133,7 +133,7 @@ def test_findings_escalate_a_run(collector: FakeCollector) -> None:
     assert (d.action, d.escalated) == ("review", True)
     (req,) = collector.of_type("approval.requested")
     assert req["data"]["policy"]["escalated"] is True
-    assert "detector findings" in req["data"]["reason"]
+    assert req["data"]["reason"] == "Run write_file?"  # the office shows why, from policy
 
 
 def test_review_fails_closed_without_a_collector() -> None:

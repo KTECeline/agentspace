@@ -12,7 +12,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("bundled recordings", () => {
-  it.each(RECORDINGS)("$id replays to a finished run with every agent in a room", (info) => {
+  it.each(RECORDINGS)("$id replays to a finished run with every agent in a room and at rest", (info) => {
     const rec = JSON.parse(readFileSync(fileURLToPath(new URL(`../public${info.file}`, import.meta.url)), "utf8")) as Recording;
     expect(rec.format).toBe("agentspace-recording");
     expect(rec.events.length).toBeGreaterThan(10);
@@ -26,8 +26,10 @@ describe("bundled recordings", () => {
     const agents = Object.values(state.agents);
     expect(agents.length).toBeGreaterThanOrEqual(2);
     expect(agents.every((a) => a.team_id)).toBe(true);
-    expect(agents.every((a) => a.status === "done")).toBe(true);
-    expect(Object.values(state.runs).some((r) => r.status === "ok")).toBe(true);
+    // The failure story ends in an error on purpose; every other recording ends ok.
+    const expected = info.id === "story" ? "error" : "ok";
+    expect(Object.values(state.runs).map((r) => r.status)).toEqual([expected]);
+    expect(agents.every((a) => a.status === "done" || a.status === "error")).toBe(true);
   });
 
   it.each(RECORDINGS)("$id carries the evidence for every policy review", (info) => {
@@ -38,7 +40,7 @@ describe("bundled recordings", () => {
   });
 
   it("falls back to the first recording for unknown ids", () => {
-    expect(recordingById("nope").id).toBe("dev-team");
-    expect(recordingById(undefined).id).toBe("dev-team");
+    expect(recordingById("nope").id).toBe("story");
+    expect(recordingById(undefined).id).toBe("story");
   });
 });

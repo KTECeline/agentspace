@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { compareRuns, pickBaseline } from "@/lib/compare";
+import { buildTimeline } from "@/lib/replay";
 import { recordingSource } from "@/lib/compareSource";
 import { RECORDINGS } from "@/lib/recordings";
 import type { Recording } from "@/lib/sources/recorded";
@@ -21,7 +23,7 @@ describe("recordingSource (/demo/compare)", () => {
   it("serves a run's events and links into /demo, paused on an event", async () => {
     const src = recordingSource(RECORDINGS, load);
     const runs = await src.runs(null);
-    const devTeam = (await load(RECORDINGS[0]!.file)).run_id;
+    const devTeam = (await load(RECORDINGS.find((r) => r.id === "dev-team")!.file)).run_id;
     expect(runs.some((r) => r.run_id === devTeam)).toBe(true);
     const { events, truncated } = await src.events(devTeam, null);
     expect(truncated).toBe(false);
@@ -35,5 +37,21 @@ describe("recordingSource (/demo/compare)", () => {
     await src.runs(null);
     await src.events((await load(RECORDINGS[0]!.file)).run_id, null);
     expect(calls).toBe(RECORDINGS.length);
+  });
+
+  it("tells the failure story: the bad run, its good baseline, and what changed", async () => {
+    const src = recordingSource(RECORDINGS, load);
+    const runs = await src.runs(null);
+    const bad = runs.find((r) => r.status === "error")!; // what /demo/compare opens on
+    const good = pickBaseline(runs, bad)!;
+    expect(good.run_id).toBe((await load("/recordings/story-good.json")).run_id);
+    const [a, b] = await Promise.all([src.events(good.run_id, null), src.events(bad.run_id, null)]);
+    const c = compareRuns(buildTimeline(a.events).events, buildTimeline(b.events).events);
+    expect([c.a.status, c.b.status]).toEqual(["ok", "error"]);
+    expect(c.pathChanged).toBe(false); // same agents, same order: the difference is inside a step
+    expect(c.b.tools.run_tests).toMatchObject({ failed: 3 });
+    expect([c.a.findings, c.b.findings]).toEqual([0, 3]);
+    expect(c.b.approvals).toBe(1);
+    expect(c.divergence).not.toBeNull();
   });
 });

@@ -5,7 +5,7 @@
       "match": "write_file",
       "action": "allow",
       "on_findings": "review",
-      "reason": "This run has findings: a person checks code changes before they're written."
+      "reason": "Code changes need a person once a run has findings."
     }
   ],
   "on_findings": { "pause": ["failure_loop"], "min_severity": "warning" }

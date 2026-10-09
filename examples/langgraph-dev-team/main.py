@@ -241,7 +241,7 @@ def run_once(llm: BaseChatModel, approve: bool = False, story: bool = False) -> 
         shutil.rmtree(workdir, ignore_errors=True)
 
 
-def story(baseline: int, latency: float) -> None:
+def story(baseline: int, latency: float, baseline_latency: float = 0.05) -> None:
     """The failure story (docs/debugging): good runs build a baseline, then one goes wrong.
 
     Start the collector with examples/langgraph-dev-team/policy.json (see the README): the
@@ -251,7 +251,7 @@ def story(baseline: int, latency: float) -> None:
 
     for n in range(1, baseline + 1):
         t0 = time.monotonic()
-        result = run_once(fake_model(0.05), story=True)
+        result = run_once(fake_model(baseline_latency), story=True)
         print(f"good run {n}/{baseline}: {result.get('fix_summary', 'no fix')} ({time.monotonic() - t0:.1f}s)")
     print("\nNow the regression. Watch the office: the run pauses after the third failed test run.")
     print("Resume it from the run bar, then approve or reject the Engineer's next write.\n")
@@ -276,6 +276,9 @@ def main() -> int:
         "--story", action="store_true", help="the failure story (scripted model, needs policy.json)"
     )
     parser.add_argument("--baseline", type=int, default=5, help="--story: good runs first")
+    parser.add_argument(
+        "--baseline-latency", type=float, default=0.05, help="--story: fake model delay in good runs"
+    )
     args = parser.parse_args()
 
     if not (args.fake or args.story) and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -286,7 +289,7 @@ def main() -> int:
 
     if args.story:
         try:
-            story(args.baseline, args.latency)
+            story(args.baseline, args.latency, args.baseline_latency)
         except agentspace.Cancelled:
             print("regression run: cancelled from the office")
         agentspace.flush()

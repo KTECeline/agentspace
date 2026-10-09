@@ -112,7 +112,8 @@ export async function guardTool(host: OversightHost | null, tool: string, args: 
       escalated: decision.escalated || undefined,
       arguments_hash: hashArguments(args),
     };
-    reason = `Run ${tool}?${decision.reason ? ` ${decision.reason}` : ""}${decision.escalated ? " (asked because this run has detector findings)" : ""}`;
+    // Escalation travels in policy.escalated; the office says it next to the evidence.
+    reason = `Run ${tool}?${decision.reason ? ` ${decision.reason}` : ""}`;
   } catch (err) {
     internalError("guardTool", err);
     payload = { tool };

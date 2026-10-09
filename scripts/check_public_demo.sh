@@ -17,7 +17,7 @@ for path in "/" "/dashboard" "/replay?run=x&collector=https://attacker.example" 
 done
 ok "the live office, /dashboard, /replay and /compare redirect to /demo, even with ?collector="
 
-for path in /demo /demo/compare /docs /docs/security /recordings/dev-team.json; do
+for path in /demo /demo/compare /docs /docs/security /recordings/story-failure.json /recordings/dev-team.json; do
   code=$(curl "${H[@]}" -o /dev/null -w '%{http_code}' "$BASE$path")
   [ "$code" = 200 ] || fail "GET $path -> $code"
 done
